@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 )
@@ -49,8 +50,8 @@ func runTrain(args []string) error {
 
 	rng := rand.New(rand.NewSource(normalizeSeed(*seed)))
 	env := newGridworldEnv()
-	agent := newStubAgent(rng)
 	values := newValueTable(env.rows, env.cols, 0.1)
+	agent := newEpsilonGreedyAgent(rng, values, 0.1)
 
 	var cumulativeReward float64
 	var cumulativeSteps int
@@ -84,15 +85,15 @@ type gridworldEnv struct {
 
 func newGridworldEnv() *gridworldEnv {
 	return &gridworldEnv{
-		rows:      4,
-		cols:      4,
-		startRow:  3,
-		startCol:  0,
-		goalRow:   0,
-		goalCol:   3,
-		maxSteps:  20,
-		currRow:   3,
-		currCol:   0,
+		rows:       4,
+		cols:       4,
+		startRow:   3,
+		startCol:   0,
+		goalRow:    0,
+		goalCol:    3,
+		maxSteps:   20,
+		currRow:    3,
+		currCol:    0,
 		stepsTaken: 0,
 	}
 }
@@ -107,15 +108,29 @@ func (g *gridworldEnv) step(action int) (float64, bool) {
 	if g.stepsTaken >= g.maxSteps {
 		return 0, true
 	}
+	row, col := g.nextPosition(action)
+	g.currRow = row
+	g.currCol = col
+	g.stepsTaken++
+	if g.currRow == g.goalRow && g.currCol == g.goalCol {
+		return 1, true
+	}
+	if g.stepsTaken >= g.maxSteps {
+		return 0, true
+	}
+	return 0, false
+}
+
+func (g *gridworldEnv) nextPosition(action int) (int, int) {
 	row, col := g.currRow, g.currCol
 	switch action {
-	case 0: // up
+	case 0:
 		row--
-	case 1: // right
+	case 1:
 		col++
-	case 2: // down
+	case 2:
 		row++
-	case 3: // left
+	case 3:
 		col--
 	}
 	if row < 0 {
@@ -130,47 +145,59 @@ func (g *gridworldEnv) step(action int) (float64, bool) {
 	if col >= g.cols {
 		col = g.cols - 1
 	}
-	g.currRow = row
-	g.currCol = col
-	g.stepsTaken++
-	if g.currRow == g.goalRow && g.currCol == g.goalCol {
-		return 1, true
-	}
-	if g.stepsTaken >= g.maxSteps {
-		return 0, true
-	}
-	return 0, false
+	return row, col
 }
-
 
 type position struct {
 	row int
 	col int
 }
 
-type stubAgent struct {
-	rng *rand.Rand
+type epsilonGreedyAgent struct {
+	rng     *rand.Rand
+	values  *valueTable
+	epsilon float64
 }
 
-func newStubAgent(rng *rand.Rand) *stubAgent {
-	return &stubAgent{rng: rng}
+func newEpsilonGreedyAgent(rng *rand.Rand, values *valueTable, epsilon float64) *epsilonGreedyAgent {
+	return &epsilonGreedyAgent{rng: rng, values: values, epsilon: epsilon}
 }
 
-func (a *stubAgent) act(numActions int) int {
-	return a.rng.Intn(numActions)
+func (a *epsilonGreedyAgent) act(env *gridworldEnv) int {
+	if a.rng.Float64() < a.epsilon {
+		return a.rng.Intn(4)
+	}
+	bestAction := 0
+	bestScore := math.Inf(-1)
+	countBest := 0
+	for action := 0; action < 4; action++ {
+		row, col := env.nextPosition(action)
+		score := a.values.get(row, col)
+		if score > bestScore {
+			bestScore = score
+			bestAction = action
+			countBest = 1
+		} else if score == bestScore {
+			countBest++
+			if a.rng.Intn(countBest) == 0 {
+				bestAction = action
+			}
+		}
+	}
+	return bestAction
 }
 
-func (a *stubAgent) update(reward float64) {
+func (a *epsilonGreedyAgent) update(reward float64) {
 	_ = reward
 }
 
-func runEpisode(env *gridworldEnv, agent *stubAgent) (float64, int, []position) {
+func runEpisode(env *gridworldEnv, agent *epsilonGreedyAgent) (float64, int, []position) {
 	env.reset()
 	var total float64
 	steps := 0
 	path := make([]position, 0, env.maxSteps)
 	for {
-		action := agent.act(4)
+		action := agent.act(env)
 		reward, done := env.step(action)
 		agent.update(reward)
 		total += reward
@@ -220,4 +247,8 @@ func (v *valueTable) print() {
 		}
 		fmt.Println()
 	}
+}
+
+func (v *valueTable) get(row, col int) float64 {
+	return v.data[row][col]
 }
