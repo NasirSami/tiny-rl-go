@@ -37,6 +37,7 @@ func runTrain(args []string) error {
 	envName := fs.String("env", "gridworld", "environment to train in")
 	episodes := fs.Int("episodes", 1, "number of training episodes")
 	seed := fs.Int64("seed", 0, "deterministic seed (0 for default)")
+	epsilon := fs.Float64("epsilon", 0.1, "exploration rate (0-1)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -45,13 +46,16 @@ func runTrain(args []string) error {
 	if *episodes <= 0 {
 		return fmt.Errorf("episodes must be positive (got %d)", *episodes)
 	}
+	if *epsilon < 0 || *epsilon > 1 {
+		return fmt.Errorf("epsilon must be between 0 and 1 (got %.2f)", *epsilon)
+	}
 
-	fmt.Printf("train config => env=%s episodes=%d seed=%d\n", *envName, *episodes, *seed)
+	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f\n", *envName, *episodes, *seed, *epsilon)
 
 	rng := rand.New(rand.NewSource(normalizeSeed(*seed)))
 	env := newGridworldEnv()
 	values := newValueTable(env.rows, env.cols, 0.1)
-	agent := newEpsilonGreedyAgent(rng, values, 0.1)
+	agent := newEpsilonGreedyAgent(rng, values, *epsilon)
 
 	var cumulativeReward float64
 	var cumulativeSteps int
