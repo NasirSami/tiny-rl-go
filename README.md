@@ -20,3 +20,13 @@ Goal: learn single-agent and multi-agent systems by building everything yourself
 1. **Install Go** and verify with:
    ```bash
    go version
+   ```
+2. Rebuild and run the CLI playground:
+   ```bash
+   go run ./cmd/tinyrl train
+   ```
+3. Rebuild the WebAssembly bundle and launch the web UI:
+   ```bash
+   ./scripts/dev-web.sh        # default port 8080
+   ./scripts/dev-web.sh 8081   # optional custom port
+   ```
