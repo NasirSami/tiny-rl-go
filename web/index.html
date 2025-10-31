@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>tiny-rl-go Playground</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <h1>tiny-rl-go</h1>
+        <form id="controlForm">
+          <label>
+            Algorithm
+            <select name="algorithm" disabled>
+              <option value="montecarlo" selected>Monte Carlo (coming soon)</option>
+            </select>
+          </label>
+          <label>
+            Episodes
+            <input type="number" name="episodes" min="1" max="500" value="30" />
+          </label>
+          <label>
+            Seed
+            <input type="number" name="seed" value="7" />
+          </label>
+          <label>
+            Epsilon
+            <input type="number" name="epsilon" step="0.05" min="0" max="1" value="0.1" />
+          </label>
+          <label>
+            Alpha
+            <input type="number" name="alpha" step="0.05" min="0" max="1" value="0.1" />
+          </label>
+          <div class="buttons">
+            <button type="submit">Start Training</button>
+            <button type="button" id="stopBtn">Stop</button>
+          </div>
+        </form>
+        <div class="status" id="status"></div>
+      </aside>
+      <main class="main">
+        <div class="canvas-container">
+          <canvas id="gridCanvas" width="400" height="400"></canvas>
+          <div class="view-toggle">
+            <button type="button" data-view="path" class="active">Path</button>
+            <button type="button" data-view="heatmap">Heatmap</button>
+          </div>
+        </div>
+      </main>
+      <section class="metrics" id="metrics">
+        <h2>Metrics</h2>
+        <div id="metricSummary">Episode and reward stats will appear here.</div>
+        <h2>Event Log</h2>
+        <div id="eventLog"></div>
+      </section>
+    </div>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
