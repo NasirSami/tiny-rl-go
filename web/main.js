@@ -9,6 +9,7 @@ let currentTrail = [];
 let lastEpisodeId = 0;
 let playbackDelayMs = DEFAULT_PLAYBACK_DELAY;
 let currentAlgorithm = 'montecarlo';
+let currentGamma = 0.9;
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
@@ -73,9 +74,12 @@ function updateView(snapshot) {
   if (snapshot.config && typeof snapshot.config.algorithm === 'string') {
     currentAlgorithm = snapshot.config.algorithm;
   }
+  if (snapshot.config && typeof snapshot.config.gamma === 'number') {
+    currentGamma = snapshot.config.gamma;
+  }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
-  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — delay ${delayLabel}`;
+  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(2)} — delay ${delayLabel}`;
   appendLog(snapshot);
   draw();
 }
@@ -192,6 +196,7 @@ function serializeForm(form) {
     seed: Number(data.get('seed')),
     epsilon: Number(data.get('epsilon')),
     alpha: Number(data.get('alpha')),
+    gamma: Number(data.get('gamma')),
     rows: Number(data.get('rows')),
     cols: Number(data.get('cols')),
     algorithm: String(data.get('algorithm') || 'montecarlo'),
@@ -211,6 +216,7 @@ function attachEventListeners() {
   const cfg = serializeForm(form);
   playbackDelayMs = cfg.stepDelayMs || 0;
   currentAlgorithm = cfg.algorithm || 'montecarlo';
+  currentGamma = typeof cfg.gamma === 'number' && !Number.isNaN(cfg.gamma) ? cfg.gamma : currentGamma;
   console.log('[form] submitted config', cfg, 'playbackDelay', playbackDelayMs);
   const config = JSON.stringify(cfg);
   resetAnimationState();

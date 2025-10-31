@@ -40,10 +40,11 @@ func runTrain(args []string) error {
 	seed := fs.Int64("seed", 0, "deterministic seed (0 for default)")
 	epsilon := fs.Float64("epsilon", 0.1, "exploration rate (0-1)")
 	alpha := fs.Float64("alpha", 0.1, "learning rate (0-1)")
+	gamma := fs.Float64("gamma", 0.9, "discount factor (0-1)")
 	rows := fs.Int("rows", 4, "grid rows")
 	cols := fs.Int("cols", 4, "grid columns")
 	stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
-	algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo)")
+	algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo or q-learning)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -68,16 +69,22 @@ func runTrain(args []string) error {
 		return fmt.Errorf("step-delay must be non-negative (got %d)", *stepDelay)
 	}
 	if *algorithm != engine.AlgorithmMonteCarlo {
-		return fmt.Errorf("unsupported algorithm %q", *algorithm)
+		if *algorithm != engine.AlgorithmQLearning {
+			return fmt.Errorf("unsupported algorithm %q", *algorithm)
+		}
+	}
+	if *gamma < 0 || *gamma > 1 {
+		return fmt.Errorf("gamma must be between 0 and 1 (got %.2f)", *gamma)
 	}
 
-	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f rows=%d cols=%d stepDelayMs=%d algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *rows, *cols, *stepDelay, *algorithm)
+	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *gamma, *rows, *cols, *stepDelay, *algorithm)
 
 	cfg := engine.Config{
 		Episodes:    *episodes,
 		Seed:        *seed,
 		Epsilon:     *epsilon,
 		Alpha:       *alpha,
+		Gamma:       *gamma,
 		Rows:        *rows,
 		Cols:        *cols,
 		StepDelayMs: *stepDelay,

@@ -102,9 +102,11 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		"seed":        snapshot.Config.Seed,
 		"epsilon":     snapshot.Config.Epsilon,
 		"alpha":       snapshot.Config.Alpha,
+		"gamma":       snapshot.Config.Gamma,
 		"rows":        snapshot.Config.Rows,
 		"cols":        snapshot.Config.Cols,
 		"stepDelayMs": snapshot.Config.StepDelayMs,
+		"algorithm":   snapshot.Config.Algorithm,
 	}
 	payload := map[string]interface{}{
 		"step":              snapshot.Step,

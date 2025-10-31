@@ -15,6 +15,7 @@ const (
 
 const (
 	AlgorithmMonteCarlo = "montecarlo"
+	AlgorithmQLearning  = "q-learning"
 )
 
 type Config struct {
@@ -25,6 +26,7 @@ type Config struct {
 	Rows        int
 	Cols        int
 	StepDelayMs int
+	Gamma       float64
 	Algorithm   string
 }
 
@@ -55,6 +57,7 @@ type Trainer struct {
 	env               *gridworldEnv
 	agent             *epsilonGreedyAgent
 	values            *valueTable
+	qvalues           *qTable
 	step              int
 	successCount      int
 	episodesCompleted int
@@ -66,7 +69,10 @@ func NewTrainer(cfg Config) *Trainer {
 	if cfg.Algorithm == "" {
 		cfg.Algorithm = AlgorithmMonteCarlo
 	}
-	if cfg.Algorithm != AlgorithmMonteCarlo {
+	switch cfg.Algorithm {
+	case AlgorithmMonteCarlo, AlgorithmQLearning:
+		// allowed
+	default:
 		cfg.Algorithm = AlgorithmMonteCarlo
 	}
 	if cfg.Rows <= 0 {
@@ -78,20 +84,32 @@ func NewTrainer(cfg Config) *Trainer {
 	if cfg.StepDelayMs < 0 {
 		cfg.StepDelayMs = 0
 	}
+	if cfg.Gamma <= 0 || cfg.Gamma > 1 {
+		cfg.Gamma = 0.9
+	}
 	seed := cfg.Seed
 	if seed == 0 {
 		seed = 1
 	}
 	rng := rand.New(rand.NewSource(seed))
 	env := newGridworldEnv(cfg.Rows, cfg.Cols)
-	values := newValueTable(env.rows, env.cols, cfg.Alpha)
-	agent := newEpsilonGreedyAgent(rng, values, cfg.Epsilon)
+	var (
+		values  *valueTable
+		qvalues *qTable
+	)
+	if cfg.Algorithm == AlgorithmMonteCarlo {
+		values = newValueTable(env.rows, env.cols, cfg.Alpha)
+	} else {
+		qvalues = newQTable(env.rows, env.cols, 4)
+	}
+	agent := newEpsilonGreedyAgent(rng, values, qvalues, cfg.Epsilon)
 	return &Trainer{
-		cfg:    cfg,
-		rng:    rng,
-		env:    env,
-		agent:  agent,
-		values: values,
+		cfg:     cfg,
+		rng:     rng,
+		env:     env,
+		agent:   agent,
+		values:  values,
+		qvalues: qvalues,
 	}
 }
 
@@ -118,8 +136,12 @@ func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
 
 func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapshot) {
 	t.env.reset()
-	path := make([]position, 0, t.env.maxSteps)
-	rewards := make([]float64, 0, t.env.maxSteps)
+	var path []position
+	var rewards []float64
+	if t.values != nil {
+		path = make([]position, 0, t.env.maxSteps)
+		rewards = make([]float64, 0, t.env.maxSteps)
+	}
 	steps := 0
 	episodeReward := 0.0
 	var lastReward float64
@@ -130,6 +152,7 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 			return
 		default:
 		}
+		state := position{row: t.env.currRow, col: t.env.currCol}
 		action := t.agent.act(t.env)
 		reward, done := t.env.step(action)
 		t.agent.update(reward)
@@ -137,8 +160,13 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		steps++
 		t.step++
 		lastReward = reward
-		path = append(path, position{row: t.env.currRow, col: t.env.currCol})
-		rewards = append(rewards, reward)
+		nextState := position{row: t.env.currRow, col: t.env.currCol}
+		if t.qvalues != nil {
+			t.updateQLearning(state, action, reward, nextState, done)
+		} else if path != nil {
+			path = append(path, nextState)
+			rewards = append(rewards, reward)
+		}
 		out <- t.snapshot(StatusRunning, episode, steps, episodeReward, reward)
 		if t.cfg.StepDelayMs > 0 {
 			select {
@@ -163,6 +191,9 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 }
 
 func (t *Trainer) updateMonteCarloValues(path []position, rewards []float64) {
+	if t.values == nil || len(path) == 0 {
+		return
+	}
 	seen := make(map[position]bool, len(path))
 	returnSoFar := 0.0
 	for i := len(path) - 1; i >= 0; i-- {
@@ -177,7 +208,27 @@ func (t *Trainer) updateMonteCarloValues(path []position, rewards []float64) {
 	}
 }
 
+func (t *Trainer) updateQLearning(state position, action int, reward float64, next position, done bool) {
+	if t.qvalues == nil {
+		return
+	}
+	current := t.qvalues.get(state.row, state.col, action)
+	var nextValue float64
+	if !done {
+		nextValue = t.qvalues.maxValue(next.row, next.col)
+	}
+	target := reward + t.cfg.Gamma*nextValue
+	updated := current + t.cfg.Alpha*(target-current)
+	t.qvalues.set(state.row, state.col, action, updated)
+}
+
 func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeReward, reward float64) Snapshot {
+	var valueMap [][]float64
+	if t.values != nil {
+		valueMap = t.values.cloneData()
+	} else if t.qvalues != nil {
+		valueMap = t.qvalues.stateValues()
+	}
 	return Snapshot{
 		Step:              t.step,
 		Episode:           episode,
@@ -185,7 +236,7 @@ func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeRewa
 		EpisodeReward:     episodeReward,
 		Reward:            reward,
 		Position:          Position{Row: t.env.currRow, Col: t.env.currCol},
-		ValueMap:          t.values.cloneData(),
+		ValueMap:          valueMap,
 		SuccessCount:      t.successCount,
 		EpisodesCompleted: t.episodesCompleted,
 		TotalReward:       t.totalReward,
