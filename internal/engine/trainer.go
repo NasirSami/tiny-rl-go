@@ -108,6 +108,7 @@ func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
 func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapshot) {
 	t.env.reset()
 	path := make([]position, 0, t.env.maxSteps)
+	rewards := make([]float64, 0, t.env.maxSteps)
 	steps := 0
 	episodeReward := 0.0
 	var lastReward float64
@@ -126,6 +127,7 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		t.step++
 		lastReward = reward
 		path = append(path, position{row: t.env.currRow, col: t.env.currCol})
+		rewards = append(rewards, reward)
 		out <- t.snapshot(StatusRunning, episode, steps, episodeReward, reward)
 		if t.cfg.StepDelayMs > 0 {
 			select {
@@ -142,11 +144,26 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 	if episodeReward > 0 {
 		t.successCount++
 	}
-	t.values.update(path, episodeReward)
+	t.updateMonteCarloValues(path, rewards)
 	t.totalReward += episodeReward
 	t.totalSteps += steps
 	t.episodesCompleted++
 	out <- t.snapshot(StatusEpisodeComplete, episode, steps, episodeReward, lastReward)
+}
+
+func (t *Trainer) updateMonteCarloValues(path []position, rewards []float64) {
+	seen := make(map[position]bool, len(path))
+	returnSoFar := 0.0
+	for i := len(path) - 1; i >= 0; i-- {
+		returnSoFar += rewards[i]
+		state := path[i]
+		if seen[state] {
+			continue
+		}
+		seen[state] = true
+		current := t.values.data[state.row][state.col]
+		t.values.data[state.row][state.col] = current + t.cfg.Alpha*(returnSoFar-current)
+	}
 }
 
 func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeReward, reward float64) Snapshot {
