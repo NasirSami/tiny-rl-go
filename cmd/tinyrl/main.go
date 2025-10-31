@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
+
+	"tiny-rl-go/internal/engine"
 )
 
 func main() {
@@ -55,22 +57,38 @@ func runTrain(args []string) error {
 
 	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f\n", *envName, *episodes, *seed, *epsilon, *alpha)
 
-	rng := rand.New(rand.NewSource(normalizeSeed(*seed)))
-	env := newGridworldEnv()
-	values := newValueTable(env.rows, env.cols, *alpha)
-	agent := newEpsilonGreedyAgent(rng, values, *epsilon)
-
-	var cumulativeReward float64
-	var cumulativeSteps int
-	successCount := 0
-	for ep := 1; ep <= *episodes; ep++ {
-		reward, steps, path := runEpisode(env, agent)
-		fmt.Printf("episode %d: reward=%.2f steps=%d\n", ep, reward, steps)
-		cumulativeReward += reward
-		cumulativeSteps += steps
-		values.update(path, reward)
-		if reward > 0 {
-			successCount++
+	cfg := engine.Config{
+		Episodes: *episodes,
+		Seed:     *seed,
+		Epsilon:  *epsilon,
+		Alpha:    *alpha,
+	}
+	trainer := engine.NewTrainer(cfg)
+	ctx := context.Background()
+	var (
+		cumulativeReward float64
+		cumulativeSteps  int
+		successCount     int
+		valueMap         [][]float64
+	)
+	for snapshot := range trainer.Run(ctx) {
+		switch snapshot.Status {
+		case engine.StatusRunning:
+			// suppress verbose step-level output in CLI mode
+		case engine.StatusEpisodeComplete:
+			fmt.Printf("episode %d: reward=%.2f steps=%d\n", snapshot.Episode, snapshot.EpisodeReward, snapshot.EpisodeSteps)
+			cumulativeReward = snapshot.TotalReward
+			cumulativeSteps = snapshot.TotalSteps
+			successCount = snapshot.SuccessCount
+			valueMap = snapshot.ValueMap
+		case engine.StatusDone:
+			cumulativeReward = snapshot.TotalReward
+			cumulativeSteps = snapshot.TotalSteps
+			successCount = snapshot.SuccessCount
+			valueMap = snapshot.ValueMap
+		case engine.StatusCancelled:
+			fmt.Println("training cancelled")
+			return nil
 		}
 	}
 
@@ -78,13 +96,20 @@ func runTrain(args []string) error {
 	avgSteps := float64(cumulativeSteps) / float64(*episodes)
 	successRate := float64(successCount) / float64(*episodes)
 	fmt.Printf("summary: avg_reward=%.2f avg_steps=%.2f success_rate=%.2f\n", avgReward, avgSteps, successRate)
-	values.print()
+	printValueMap(valueMap)
 
 	return nil
 }
-func normalizeSeed(seed int64) int64 {
-	if seed == 0 {
-		return 1
+
+func printValueMap(data [][]float64) {
+	if len(data) == 0 {
+		return
 	}
-	return seed
+	fmt.Println("value table:")
+	for _, row := range data {
+		for _, v := range row {
+			fmt.Printf("%6.2f ", v)
+		}
+		fmt.Println()
+	}
 }
