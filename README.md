@@ -4,9 +4,9 @@ CPU-only, **from-scratch** reinforcement-learning lab in Go (stdlib only).
 Goal: learn single-agent and multi-agent systems by building everything yourself—no third-party libs, no GPU.
 
 ## Features (v1)
-- **Solo GridWorld** (2-D, walls + goal), tabular Q-learning.
+- **Solo GridWorld** (2-D, multi-goal), tabular Monte Carlo, Q-learning, and SARSA.
 - **Cooperative grid** with two independent Q-learners, switches that open a door, then each agent reaches its own goal.
-- CLI modes, moving-average rewards, and greedy rollout with ASCII rendering.
+- CLI modes, moving-average rewards, greedy rollout with ASCII rendering, and a WASM playground.
 
 ## Tutor-First Workflow (for Codex CLI)
 - Start in **Tutor Mode**: explanations, plan, and quiz—**no code**.
@@ -30,3 +30,17 @@ Goal: learn single-agent and multi-agent systems by building everything yourself
    ./scripts/dev-web.sh        # default port 8080
    ./scripts/dev-web.sh 8081   # optional custom port
    ```
+
+### CLI Examples
+
+- Monte Carlo with default goal:
+  ```bash
+  go run ./cmd/tinyrl train --algorithm montecarlo --episodes 10
+  ```
+- Q-learning with custom goals (row,col,reward):
+  ```bash
+  go run ./cmd/tinyrl train \
+    --algorithm q-learning \
+    --alpha 0.5 --gamma 0.9 \
+    --goal 0,3,1 --goal 2,2,0.5
+  ```

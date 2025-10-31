@@ -97,6 +97,14 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		"row": snapshot.Position.Row,
 		"col": snapshot.Position.Col,
 	}
+	goals := make([]interface{}, len(snapshot.Goals))
+	for i, goal := range snapshot.Goals {
+		goals[i] = map[string]interface{}{
+			"row":    goal.Row,
+			"col":    goal.Col,
+			"reward": goal.Reward,
+		}
+	}
 	config := map[string]interface{}{
 		"episodes":    snapshot.Config.Episodes,
 		"seed":        snapshot.Config.Seed,
@@ -107,6 +115,7 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		"cols":        snapshot.Config.Cols,
 		"stepDelayMs": snapshot.Config.StepDelayMs,
 		"algorithm":   snapshot.Config.Algorithm,
+		"goals":       goals,
 	}
 	payload := map[string]interface{}{
 		"step":              snapshot.Step,
@@ -116,6 +125,7 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		"reward":            snapshot.Reward,
 		"position":          position,
 		"valueMap":          valueMap,
+		"goals":             goals,
 		"successCount":      snapshot.SuccessCount,
 		"episodesCompleted": snapshot.EpisodesCompleted,
 		"totalReward":       snapshot.TotalReward,

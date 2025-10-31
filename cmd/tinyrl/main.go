@@ -1,13 +1,15 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"flag"
-	"fmt"
-	"os"
+    "context"
+    "errors"
+    "flag"
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
 
-	"tiny-rl-go/internal/engine"
+    "tiny-rl-go/internal/engine"
 )
 
 func main() {
@@ -41,10 +43,12 @@ func runTrain(args []string) error {
 	epsilon := fs.Float64("epsilon", 0.1, "exploration rate (0-1)")
 	alpha := fs.Float64("alpha", 0.1, "learning rate (0-1)")
 	gamma := fs.Float64("gamma", 0.9, "discount factor (0-1)")
-	rows := fs.Int("rows", 4, "grid rows")
-	cols := fs.Int("cols", 4, "grid columns")
-	stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
-	algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo or q-learning)")
+rows := fs.Int("rows", 4, "grid rows")
+cols := fs.Int("cols", 4, "grid columns")
+stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
+algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo, q-learning, sarsa)")
+var goals goalListFlag
+fs.Func("goal", "goal specification row,col,reward (repeatable)", goals.Set)
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -69,7 +73,7 @@ func runTrain(args []string) error {
 		return fmt.Errorf("step-delay must be non-negative (got %d)", *stepDelay)
 	}
 	if *algorithm != engine.AlgorithmMonteCarlo {
-		if *algorithm != engine.AlgorithmQLearning {
+		if *algorithm != engine.AlgorithmQLearning && *algorithm != engine.AlgorithmSARSA {
 			return fmt.Errorf("unsupported algorithm %q", *algorithm)
 		}
 	}
@@ -77,19 +81,20 @@ func runTrain(args []string) error {
 		return fmt.Errorf("gamma must be between 0 and 1 (got %.2f)", *gamma)
 	}
 
-	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *gamma, *rows, *cols, *stepDelay, *algorithm)
+fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *gamma, *rows, *cols, *stepDelay, *algorithm)
 
-	cfg := engine.Config{
-		Episodes:    *episodes,
-		Seed:        *seed,
-		Epsilon:     *epsilon,
-		Alpha:       *alpha,
-		Gamma:       *gamma,
-		Rows:        *rows,
-		Cols:        *cols,
-		StepDelayMs: *stepDelay,
-		Algorithm:   *algorithm,
-	}
+cfg := engine.Config{
+    Episodes:    *episodes,
+    Seed:        *seed,
+    Epsilon:     *epsilon,
+    Alpha:       *alpha,
+    Gamma:       *gamma,
+    Rows:        *rows,
+    Cols:        *cols,
+    StepDelayMs: *stepDelay,
+    Algorithm:   *algorithm,
+    Goals:       goals.Goals,
+}
 	trainer := engine.NewTrainer(cfg)
 	ctx := context.Background()
 	var (
@@ -139,4 +144,33 @@ func printValueMap(data [][]float64) {
 		}
 		fmt.Println()
 	}
+}
+
+type goalListFlag struct {
+	Goals []engine.Goal
+}
+
+func (g *goalListFlag) String() string {
+	return fmt.Sprintf("%v", g.Goals)
+}
+
+func (g *goalListFlag) Set(value string) error {
+	parts := strings.Split(value, ",")
+	if len(parts) != 3 {
+		return fmt.Errorf("goal must be in row,col,reward format")
+	}
+	row, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return fmt.Errorf("invalid goal row: %w", err)
+	}
+	col, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return fmt.Errorf("invalid goal col: %w", err)
+	}
+	reward, err := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
+	if err != nil {
+		return fmt.Errorf("invalid goal reward: %w", err)
+	}
+	g.Goals = append(g.Goals, engine.Goal{Row: row, Col: col, Reward: reward})
+	return nil
 }

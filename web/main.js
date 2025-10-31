@@ -10,6 +10,7 @@ let lastEpisodeId = 0;
 let playbackDelayMs = DEFAULT_PLAYBACK_DELAY;
 let currentAlgorithm = 'montecarlo';
 let currentGamma = 0.9;
+let currentGoals = [];
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
@@ -77,6 +78,9 @@ function updateView(snapshot) {
   if (snapshot.config && typeof snapshot.config.gamma === 'number') {
     currentGamma = snapshot.config.gamma;
   }
+  if (Array.isArray(snapshot.goals)) {
+    currentGoals = snapshot.goals;
+  }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
   metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(2)} — delay ${delayLabel}`;
@@ -137,9 +141,8 @@ function drawGrid(snapshot) {
     }
   }
   const start = { row: rows - 1, col: 0 };
-  const goal = { row: 0, col: cols - 1 };
   drawCell(start, cellWidth, cellHeight, '#0d6efd');
-  drawCell(goal, cellWidth, cellHeight, '#198754');
+  drawGoals(cellWidth, cellHeight);
   drawTrail(cellWidth, cellHeight);
   drawCell(snapshot.position, cellWidth, cellHeight, '#d63384');
 }
@@ -156,6 +159,18 @@ function drawTrail(cellWidth, cellHeight) {
     const alpha = 0.2 + (idx / total) * 0.6;
     ctx.fillStyle = `rgba(13, 110, 253, ${alpha.toFixed(3)})`;
     ctx.fillRect(pos.col * cellWidth + 4, pos.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
+  });
+}
+
+function drawGoals(cellWidth, cellHeight) {
+  if (!currentGoals || currentGoals.length === 0) {
+    const defaultCol = lastSnapshot && lastSnapshot.valueMap.length > 0 ? lastSnapshot.valueMap[0].length - 1 : 0;
+    drawCell({ row: 0, col: Math.max(0, defaultCol) }, cellWidth, cellHeight, '#198754');
+    return;
+  }
+  currentGoals.forEach((goal) => {
+    ctx.fillStyle = '#198754';
+    ctx.fillRect(goal.col * cellWidth + 4, goal.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
   });
 }
 
@@ -201,7 +216,35 @@ function serializeForm(form) {
     cols: Number(data.get('cols')),
     algorithm: String(data.get('algorithm') || 'montecarlo'),
     stepDelayMs: Number(data.get('stepDelayMs')),
+    goals: parseGoals(data.get('goals')),
   };
+}
+
+function parseGoals(raw) {
+  if (!raw) {
+    return [];
+  }
+  const lines = String(raw)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const goals = [];
+  for (const line of lines) {
+    const parts = line.split(',').map((p) => p.trim());
+    if (parts.length !== 3) {
+      console.warn('[goals] skipping invalid goal line', line);
+      continue;
+    }
+    const row = Number(parts[0]);
+    const col = Number(parts[1]);
+    const reward = Number(parts[2]);
+    if (Number.isNaN(row) || Number.isNaN(col) || Number.isNaN(reward)) {
+      console.warn('[goals] skipping invalid goal values', line);
+      continue;
+    }
+    goals.push({ row, col, reward });
+  }
+  return goals;
 }
 
 function attachEventListeners() {
@@ -217,6 +260,9 @@ function attachEventListeners() {
   playbackDelayMs = cfg.stepDelayMs || 0;
   currentAlgorithm = cfg.algorithm || 'montecarlo';
   currentGamma = typeof cfg.gamma === 'number' && !Number.isNaN(cfg.gamma) ? cfg.gamma : currentGamma;
+  if (Array.isArray(cfg.goals)) {
+    currentGoals = cfg.goals;
+  }
   console.log('[form] submitted config', cfg, 'playbackDelay', playbackDelayMs);
   const config = JSON.stringify(cfg);
   resetAnimationState();
@@ -248,6 +294,7 @@ function resetAnimationState() {
   isAnimating = false;
   currentTrail = [];
   lastEpisodeId = 0;
+  currentGoals = [];
 }
 
 (async function init() {

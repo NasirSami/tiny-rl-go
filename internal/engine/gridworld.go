@@ -4,15 +4,14 @@ type gridworldEnv struct {
 	rows, cols int
 	startRow   int
 	startCol   int
-	goalRow    int
-	goalCol    int
 	maxSteps   int
 	currRow    int
 	currCol    int
 	stepsTaken int
+	goals      []Goal
 }
 
-func newGridworldEnv(rows, cols int) *gridworldEnv {
+func newGridworldEnv(rows, cols int, goals []Goal) *gridworldEnv {
 	if rows <= 0 {
 		rows = 1
 	}
@@ -32,12 +31,11 @@ func newGridworldEnv(rows, cols int) *gridworldEnv {
 		cols:       cols,
 		startRow:   startRow,
 		startCol:   0,
-		goalRow:    0,
-		goalCol:    cols - 1,
 		maxSteps:   maxSteps,
 		currRow:    startRow,
 		currCol:    0,
 		stepsTaken: 0,
+		goals:      goals,
 	}
 }
 
@@ -55,8 +53,10 @@ func (g *gridworldEnv) step(action int) (float64, bool) {
 	g.currRow = row
 	g.currCol = col
 	g.stepsTaken++
-	if g.currRow == g.goalRow && g.currCol == g.goalCol {
-		return 1, true
+	for _, goal := range g.goals {
+		if g.currRow == goal.Row && g.currCol == goal.Col {
+			return goal.Reward, true
+		}
 	}
 	if g.stepsTaken >= g.maxSteps {
 		return 0, true

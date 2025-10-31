@@ -16,6 +16,7 @@ const (
 const (
 	AlgorithmMonteCarlo = "montecarlo"
 	AlgorithmQLearning  = "q-learning"
+	AlgorithmSARSA      = "sarsa"
 )
 
 type Config struct {
@@ -28,6 +29,7 @@ type Config struct {
 	StepDelayMs int
 	Gamma       float64
 	Algorithm   string
+	Goals       []Goal
 }
 
 type Position struct {
@@ -43,6 +45,7 @@ type Snapshot struct {
 	Reward            float64
 	Position          Position
 	ValueMap          [][]float64
+	Goals             []Goal
 	SuccessCount      int
 	EpisodesCompleted int
 	TotalReward       float64
@@ -65,12 +68,18 @@ type Trainer struct {
 	totalSteps        int
 }
 
+type Goal struct {
+	Row     int
+	Col     int
+	Reward  float64
+}
+
 func NewTrainer(cfg Config) *Trainer {
 	if cfg.Algorithm == "" {
 		cfg.Algorithm = AlgorithmMonteCarlo
 	}
 	switch cfg.Algorithm {
-	case AlgorithmMonteCarlo, AlgorithmQLearning:
+	case AlgorithmMonteCarlo, AlgorithmQLearning, AlgorithmSARSA:
 		// allowed
 	default:
 		cfg.Algorithm = AlgorithmMonteCarlo
@@ -92,7 +101,12 @@ func NewTrainer(cfg Config) *Trainer {
 		seed = 1
 	}
 	rng := rand.New(rand.NewSource(seed))
-	env := newGridworldEnv(cfg.Rows, cfg.Cols)
+	sanitizedGoals := sanitizeGoals(cfg.Goals, cfg.Rows, cfg.Cols)
+	if len(sanitizedGoals) == 0 {
+		sanitizedGoals = []Goal{{Row: 0, Col: cfg.Cols - 1, Reward: 1}}
+	}
+	cfg.Goals = cloneGoals(sanitizedGoals)
+	env := newGridworldEnv(cfg.Rows, cfg.Cols, sanitizedGoals)
 	var (
 		values  *valueTable
 		qvalues *qTable
@@ -111,6 +125,22 @@ func NewTrainer(cfg Config) *Trainer {
 		values:  values,
 		qvalues: qvalues,
 	}
+}
+
+func sanitizeGoals(goals []Goal, rows, cols int) []Goal {
+	result := make([]Goal, 0, len(goals))
+	for _, g := range goals {
+		if g.Reward == 0 {
+			continue
+		}
+		row := g.Row
+		col := g.Col
+		if row < 0 || row >= rows || col < 0 || col >= cols {
+			continue
+		}
+		result = append(result, Goal{Row: row, Col: col, Reward: g.Reward})
+	}
+	return result
 }
 
 func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
@@ -136,10 +166,12 @@ func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
 
 func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapshot) {
 	t.env.reset()
-	var path []position
+	state := position{row: t.env.currRow, col: t.env.currCol}
+	action := t.agent.act(t.env)
+	var states []position
 	var rewards []float64
 	if t.values != nil {
-		path = make([]position, 0, t.env.maxSteps)
+		states = append(states, state)
 		rewards = make([]float64, 0, t.env.maxSteps)
 	}
 	steps := 0
@@ -152,8 +184,6 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 			return
 		default:
 		}
-		state := position{row: t.env.currRow, col: t.env.currCol}
-		action := t.agent.act(t.env)
 		reward, done := t.env.step(action)
 		t.agent.update(reward)
 		episodeReward += reward
@@ -161,11 +191,19 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		t.step++
 		lastReward = reward
 		nextState := position{row: t.env.currRow, col: t.env.currCol}
+		var nextAction int
 		if t.qvalues != nil {
-			t.updateQLearning(state, action, reward, nextState, done)
-		} else if path != nil {
-			path = append(path, nextState)
+			if t.cfg.Algorithm == AlgorithmQLearning {
+				t.updateQLearning(state, action, reward, nextState, done)
+			} else if t.cfg.Algorithm == AlgorithmSARSA {
+				if !done {
+					nextAction = t.agent.act(t.env)
+				}
+				t.updateSARSA(state, action, reward, nextState, nextAction, done)
+			}
+		} else {
 			rewards = append(rewards, reward)
+			states = append(states, nextState)
 		}
 		out <- t.snapshot(StatusRunning, episode, steps, episodeReward, reward)
 		if t.cfg.StepDelayMs > 0 {
@@ -179,26 +217,36 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		if done {
 			break
 		}
+		state = nextState
+		if t.qvalues != nil {
+			if t.cfg.Algorithm == AlgorithmQLearning {
+				action = t.agent.act(t.env)
+			} else {
+				action = nextAction
+			}
+		} else {
+			action = t.agent.act(t.env)
+		}
 	}
 	if episodeReward > 0 {
 		t.successCount++
 	}
-	t.updateMonteCarloValues(path, rewards)
+	t.updateMonteCarloValues(states, rewards)
 	t.totalReward += episodeReward
 	t.totalSteps += steps
 	t.episodesCompleted++
 	out <- t.snapshot(StatusEpisodeComplete, episode, steps, episodeReward, lastReward)
 }
 
-func (t *Trainer) updateMonteCarloValues(path []position, rewards []float64) {
-	if t.values == nil || len(path) == 0 {
+func (t *Trainer) updateMonteCarloValues(states []position, rewards []float64) {
+	if t.values == nil || len(states) == 0 || len(rewards) == 0 {
 		return
 	}
-	seen := make(map[position]bool, len(path))
+	seen := make(map[position]bool, len(states))
 	returnSoFar := 0.0
-	for i := len(path) - 1; i >= 0; i-- {
+	for i := len(rewards) - 1; i >= 0; i-- {
 		returnSoFar += rewards[i]
-		state := path[i]
+		state := states[i]
 		if seen[state] {
 			continue
 		}
@@ -222,6 +270,20 @@ func (t *Trainer) updateQLearning(state position, action int, reward float64, ne
 	t.qvalues.set(state.row, state.col, action, updated)
 }
 
+func (t *Trainer) updateSARSA(state position, action int, reward float64, next position, nextAction int, done bool) {
+	if t.qvalues == nil {
+		return
+	}
+	current := t.qvalues.get(state.row, state.col, action)
+	var nextValue float64
+	if !done {
+		nextValue = t.qvalues.get(next.row, next.col, nextAction)
+	}
+	target := reward + t.cfg.Gamma*nextValue
+	updated := current + t.cfg.Alpha*(target-current)
+	t.qvalues.set(state.row, state.col, action, updated)
+}
+
 func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeReward, reward float64) Snapshot {
 	var valueMap [][]float64
 	if t.values != nil {
@@ -237,6 +299,7 @@ func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeRewa
 		Reward:            reward,
 		Position:          Position{Row: t.env.currRow, Col: t.env.currCol},
 		ValueMap:          valueMap,
+		Goals:             cloneGoals(t.env.goals),
 		SuccessCount:      t.successCount,
 		EpisodesCompleted: t.episodesCompleted,
 		TotalReward:       t.totalReward,
@@ -244,4 +307,13 @@ func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeRewa
 		Config:            t.cfg,
 		Status:            status,
 	}
+}
+
+func cloneGoals(goals []Goal) []Goal {
+	if len(goals) == 0 {
+		return nil
+	}
+	copyGoals := make([]Goal, len(goals))
+	copy(copyGoals, goals)
+	return copyGoals
 }
