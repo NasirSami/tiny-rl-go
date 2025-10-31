@@ -43,6 +43,7 @@ func runTrain(args []string) error {
 	rows := fs.Int("rows", 4, "grid rows")
 	cols := fs.Int("cols", 4, "grid columns")
 	stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
+	algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -66,8 +67,11 @@ func runTrain(args []string) error {
 	if *stepDelay < 0 {
 		return fmt.Errorf("step-delay must be non-negative (got %d)", *stepDelay)
 	}
+	if *algorithm != engine.AlgorithmMonteCarlo {
+		return fmt.Errorf("unsupported algorithm %q", *algorithm)
+	}
 
-	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f rows=%d cols=%d stepDelayMs=%d\n", *envName, *episodes, *seed, *epsilon, *alpha, *rows, *cols, *stepDelay)
+	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f rows=%d cols=%d stepDelayMs=%d algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *rows, *cols, *stepDelay, *algorithm)
 
 	cfg := engine.Config{
 		Episodes:    *episodes,
@@ -77,6 +81,7 @@ func runTrain(args []string) error {
 		Rows:        *rows,
 		Cols:        *cols,
 		StepDelayMs: *stepDelay,
+		Algorithm:   *algorithm,
 	}
 	trainer := engine.NewTrainer(cfg)
 	ctx := context.Background()

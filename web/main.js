@@ -8,6 +8,7 @@ let isAnimating = false;
 let currentTrail = [];
 let lastEpisodeId = 0;
 let playbackDelayMs = DEFAULT_PLAYBACK_DELAY;
+let currentAlgorithm = 'montecarlo';
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
@@ -69,8 +70,12 @@ function updateView(snapshot) {
   if (snapshot.config && typeof snapshot.config.stepDelayMs === 'number') {
     playbackDelayMs = snapshot.config.stepDelayMs;
   }
+  if (snapshot.config && typeof snapshot.config.algorithm === 'string') {
+    currentAlgorithm = snapshot.config.algorithm;
+  }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
-  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — delay ${delayLabel}`;
+  const algoLabel = currentAlgorithm || 'montecarlo';
+  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — delay ${delayLabel}`;
   appendLog(snapshot);
   draw();
 }
@@ -189,6 +194,7 @@ function serializeForm(form) {
     alpha: Number(data.get('alpha')),
     rows: Number(data.get('rows')),
     cols: Number(data.get('cols')),
+    algorithm: String(data.get('algorithm') || 'montecarlo'),
     stepDelayMs: Number(data.get('stepDelayMs')),
   };
 }
@@ -204,6 +210,7 @@ function attachEventListeners() {
     }
   const cfg = serializeForm(form);
   playbackDelayMs = cfg.stepDelayMs || 0;
+  currentAlgorithm = cfg.algorithm || 'montecarlo';
   console.log('[form] submitted config', cfg, 'playbackDelay', playbackDelayMs);
   const config = JSON.stringify(cfg);
   resetAnimationState();

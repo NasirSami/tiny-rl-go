@@ -13,6 +13,10 @@ const (
 	StatusCancelled       = "cancelled"
 )
 
+const (
+	AlgorithmMonteCarlo = "montecarlo"
+)
+
 type Config struct {
 	Episodes    int
 	Seed        int64
@@ -21,6 +25,7 @@ type Config struct {
 	Rows        int
 	Cols        int
 	StepDelayMs int
+	Algorithm   string
 }
 
 type Position struct {
@@ -58,6 +63,12 @@ type Trainer struct {
 }
 
 func NewTrainer(cfg Config) *Trainer {
+	if cfg.Algorithm == "" {
+		cfg.Algorithm = AlgorithmMonteCarlo
+	}
+	if cfg.Algorithm != AlgorithmMonteCarlo {
+		cfg.Algorithm = AlgorithmMonteCarlo
+	}
 	if cfg.Rows <= 0 {
 		cfg.Rows = 4
 	}
