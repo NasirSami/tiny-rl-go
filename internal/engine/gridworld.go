@@ -12,16 +12,30 @@ type gridworldEnv struct {
 	stepsTaken int
 }
 
-func newGridworldEnv() *gridworldEnv {
+func newGridworldEnv(rows, cols int) *gridworldEnv {
+	if rows <= 0 {
+		rows = 1
+	}
+	if cols <= 0 {
+		cols = 1
+	}
+	maxSteps := rows * cols * 4
+	if maxSteps < 10 {
+		maxSteps = 10
+	}
+	startRow := rows - 1
+	if startRow < 0 {
+		startRow = 0
+	}
 	return &gridworldEnv{
-		rows:       4,
-		cols:       4,
-		startRow:   3,
+		rows:       rows,
+		cols:       cols,
+		startRow:   startRow,
 		startCol:   0,
 		goalRow:    0,
-		goalCol:    3,
-		maxSteps:   20,
-		currRow:    3,
+		goalCol:    cols - 1,
+		maxSteps:   maxSteps,
+		currRow:    startRow,
 		currCol:    0,
 		stepsTaken: 0,
 	}

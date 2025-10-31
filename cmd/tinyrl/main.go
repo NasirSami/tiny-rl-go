@@ -40,6 +40,9 @@ func runTrain(args []string) error {
 	seed := fs.Int64("seed", 0, "deterministic seed (0 for default)")
 	epsilon := fs.Float64("epsilon", 0.1, "exploration rate (0-1)")
 	alpha := fs.Float64("alpha", 0.1, "learning rate (0-1)")
+	rows := fs.Int("rows", 4, "grid rows")
+	cols := fs.Int("cols", 4, "grid columns")
+	stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -54,14 +57,26 @@ func runTrain(args []string) error {
 	if *alpha < 0 || *alpha > 1 {
 		return fmt.Errorf("alpha must be between 0 and 1 (got %.2f)", *alpha)
 	}
+	if *rows <= 0 {
+		return fmt.Errorf("rows must be positive (got %d)", *rows)
+	}
+	if *cols <= 0 {
+		return fmt.Errorf("cols must be positive (got %d)", *cols)
+	}
+	if *stepDelay < 0 {
+		return fmt.Errorf("step-delay must be non-negative (got %d)", *stepDelay)
+	}
 
-	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f\n", *envName, *episodes, *seed, *epsilon, *alpha)
+	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f rows=%d cols=%d stepDelayMs=%d\n", *envName, *episodes, *seed, *epsilon, *alpha, *rows, *cols, *stepDelay)
 
 	cfg := engine.Config{
-		Episodes: *episodes,
-		Seed:     *seed,
-		Epsilon:  *epsilon,
-		Alpha:    *alpha,
+		Episodes:    *episodes,
+		Seed:        *seed,
+		Epsilon:     *epsilon,
+		Alpha:       *alpha,
+		Rows:        *rows,
+		Cols:        *cols,
+		StepDelayMs: *stepDelay,
 	}
 	trainer := engine.NewTrainer(cfg)
 	ctx := context.Background()

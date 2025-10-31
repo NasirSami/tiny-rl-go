@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"math/rand"
+	"time"
 )
 
 const (
@@ -13,10 +14,13 @@ const (
 )
 
 type Config struct {
-	Episodes int
-	Seed     int64
-	Epsilon  float64
-	Alpha    float64
+	Episodes    int
+	Seed        int64
+	Epsilon     float64
+	Alpha       float64
+	Rows        int
+	Cols        int
+	StepDelayMs int
 }
 
 type Position struct {
@@ -54,12 +58,21 @@ type Trainer struct {
 }
 
 func NewTrainer(cfg Config) *Trainer {
+	if cfg.Rows <= 0 {
+		cfg.Rows = 4
+	}
+	if cfg.Cols <= 0 {
+		cfg.Cols = 4
+	}
+	if cfg.StepDelayMs < 0 {
+		cfg.StepDelayMs = 0
+	}
 	seed := cfg.Seed
 	if seed == 0 {
 		seed = 1
 	}
 	rng := rand.New(rand.NewSource(seed))
-	env := newGridworldEnv()
+	env := newGridworldEnv(cfg.Rows, cfg.Cols)
 	values := newValueTable(env.rows, env.cols, cfg.Alpha)
 	agent := newEpsilonGreedyAgent(rng, values, cfg.Epsilon)
 	return &Trainer{
@@ -114,6 +127,14 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		lastReward = reward
 		path = append(path, position{row: t.env.currRow, col: t.env.currCol})
 		out <- t.snapshot(StatusRunning, episode, steps, episodeReward, reward)
+		if t.cfg.StepDelayMs > 0 {
+			select {
+			case <-ctx.Done():
+				out <- t.snapshot(StatusCancelled, episode, steps, episodeReward, reward)
+				return
+			case <-time.After(time.Duration(t.cfg.StepDelayMs) * time.Millisecond):
+			}
+		}
 		if done {
 			break
 		}

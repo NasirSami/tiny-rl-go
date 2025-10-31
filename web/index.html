@@ -33,6 +33,18 @@
             Alpha
             <input type="number" name="alpha" step="0.05" min="0" max="1" value="0.1" />
           </label>
+          <label>
+            Rows
+            <input type="number" name="rows" min="1" max="20" value="4" />
+          </label>
+          <label>
+            Columns
+            <input type="number" name="cols" min="1" max="20" value="4" />
+          </label>
+          <label>
+            Step Delay (ms)
+            <input type="number" name="stepDelayMs" min="0" max="2000" value="120" />
+          </label>
           <div class="buttons">
             <button type="submit">Start Training</button>
             <button type="button" id="stopBtn">Stop</button>
@@ -56,6 +68,7 @@
         <div id="eventLog"></div>
       </section>
     </div>
+    <script src="wasm_exec.js"></script>
     <script type="module" src="main.js"></script>
   </body>
 </html>
