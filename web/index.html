@@ -11,7 +11,7 @@
       <aside class="sidebar">
         <h1>tiny-rl-go</h1>
         <form id="controlForm">
-          <label>
+          <label class="slider-label">
             Algorithm
             <select name="algorithm">
               <option value="montecarlo" selected>Monte Carlo</option>
@@ -19,41 +19,61 @@
               <option value="sarsa">SARSA</option>
             </select>
           </label>
-          <label>
+          <label class="slider-label">
             Episodes
-            <input type="number" name="episodes" min="1" max="500" value="30" />
+            <div class="slider-row">
+              <input type="range" name="episodes" min="1" max="200" value="30" data-output-target="episodesOutput" />
+              <span class="slider-output" id="episodesOutput">30</span>
+            </div>
           </label>
-          <label>
+          <label class="slider-label">
             Seed
-            <input type="number" name="seed" value="7" />
+            <div class="slider-row">
+              <input type="range" name="seed" min="0" max="1000" value="7" data-output-target="seedOutput" />
+              <span class="slider-output" id="seedOutput">7</span>
+            </div>
           </label>
-          <label>
+          <label class="slider-label">
             Epsilon
-            <input type="number" name="epsilon" step="0.05" min="0" max="1" value="0.1" />
+            <div class="slider-row">
+              <input type="range" name="epsilon" min="0" max="1" step="0.01" value="0.1" data-output-target="epsilonOutput" />
+              <span class="slider-output" id="epsilonOutput">0.10</span>
+            </div>
           </label>
-          <label>
+          <label class="slider-label">
             Alpha
-            <input type="number" name="alpha" step="0.05" min="0" max="1" value="0.1" />
+            <div class="slider-row">
+              <input type="range" name="alpha" min="0" max="1" step="0.01" value="0.1" data-output-target="alphaOutput" />
+              <span class="slider-output" id="alphaOutput">0.10</span>
+            </div>
           </label>
-          <label>
+          <label class="slider-label">
             Gamma
-            <input type="number" name="gamma" step="0.05" min="0" max="1" value="0.9" />
+            <div class="slider-row">
+              <input type="range" name="gamma" min="0" max="1" step="0.01" value="0.9" data-output-target="gammaOutput" />
+              <span class="slider-output" id="gammaOutput">0.90</span>
+            </div>
           </label>
-          <label>
+          <label class="slider-label">
             Rows
-            <input type="number" name="rows" min="1" max="20" value="4" />
+            <div class="slider-row">
+              <input type="range" name="rows" min="1" max="20" value="4" data-output-target="rowsOutput" />
+              <span class="slider-output" id="rowsOutput">4</span>
+            </div>
           </label>
-          <label>
+          <label class="slider-label">
             Columns
-            <input type="number" name="cols" min="1" max="20" value="4" />
+            <div class="slider-row">
+              <input type="range" name="cols" min="1" max="20" value="4" data-output-target="colsOutput" />
+              <span class="slider-output" id="colsOutput">4</span>
+            </div>
           </label>
-          <label>
+          <label class="slider-label">
             Step Delay (ms)
-            <input type="number" name="stepDelayMs" min="0" max="2000" value="120" />
-          </label>
-          <label>
-            Goals (row,col,reward per line)
-            <textarea name="goals" rows="4" placeholder="0,3,1"></textarea>
+            <div class="slider-row">
+              <input type="range" name="stepDelayMs" min="0" max="2000" step="10" value="120" data-output-target="delayOutput" />
+              <span class="slider-output" id="delayOutput">120</span>
+            </div>
           </label>
           <div class="buttons">
             <button type="submit">Start Training</button>
@@ -63,13 +83,15 @@
         <div class="status" id="status"></div>
       </aside>
       <main class="main">
-        <div class="canvas-container">
+        <div class="canvas-container" id="canvasContainer">
           <canvas id="gridCanvas" width="400" height="400"></canvas>
+          <div class="resize-handle" id="resizeHandle"></div>
           <div class="view-toggle">
             <button type="button" data-view="path" class="active">Path</button>
             <button type="button" data-view="heatmap">Heatmap</button>
           </div>
         </div>
+        <p class="canvas-instructions">Drag the corner to resize. Click cells to add/remove goals.</p>
       </main>
       <section class="metrics" id="metrics">
         <h2>Metrics</h2>

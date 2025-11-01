@@ -16,6 +16,162 @@ const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 const metricsEl = document.getElementById('metricSummary');
 const logEl = document.getElementById('eventLog');
+const canvasContainer = document.getElementById('canvasContainer');
+const resizeHandle = document.getElementById('resizeHandle');
+const form = document.getElementById('controlForm');
+const rowSlider = form.querySelector('input[name="rows"]');
+const colSlider = form.querySelector('input[name="cols"]');
+const sliderInputs = form.querySelectorAll('input[type="range"][data-output-target]');
+
+const CELL_SIZE = 40;
+const MIN_ROWS = 1;
+const MAX_ROWS = 20;
+const MIN_COLS = 1;
+const MAX_COLS = 20;
+const DEFAULT_GOAL_REWARD = 1;
+
+const state = {
+  rows: Number(rowSlider.value),
+  cols: Number(colSlider.value),
+  goals: [],
+};
+
+state.goals = [{ row: 0, col: state.cols - 1, reward: DEFAULT_GOAL_REWARD }];
+currentGoals = state.goals.map((goal) => ({ ...goal }));
+
+let isResizingCanvas = false;
+let resizeStart = null;
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function updateCanvasSize() {
+  canvas.width = state.cols * CELL_SIZE;
+  canvas.height = state.rows * CELL_SIZE;
+  canvasContainer.style.width = `${canvas.width}px`;
+  canvasContainer.style.height = `${canvas.height}px`;
+}
+
+function syncSlidersFromState() {
+  rowSlider.value = state.rows;
+  colSlider.value = state.cols;
+  updateSliderOutput(rowSlider);
+  updateSliderOutput(colSlider);
+}
+
+function updateSliderOutput(input) {
+  const targetId = input.dataset.outputTarget;
+  if (!targetId) return;
+  const output = document.getElementById(targetId);
+  if (!output) return;
+  const value = Number(input.value);
+  if (input.name === 'epsilon' || input.name === 'alpha' || input.name === 'gamma') {
+    output.textContent = value.toFixed(2);
+  } else {
+    output.textContent = Math.round(value);
+  }
+}
+
+function initializeSliders() {
+  sliderInputs.forEach((input) => {
+    updateSliderOutput(input);
+    input.addEventListener('input', () => {
+      updateSliderOutput(input);
+      handleSliderChange(input.name, Number(input.value));
+    });
+  });
+  syncSlidersFromState();
+}
+
+function handleSliderChange(name, value) {
+  switch (name) {
+    case 'rows':
+      state.rows = clamp(Math.round(value), MIN_ROWS, MAX_ROWS);
+      ensureGoalsWithinBounds();
+      updateCanvasSize();
+      resetAnimationState();
+      draw();
+      break;
+    case 'cols':
+      state.cols = clamp(Math.round(value), MIN_COLS, MAX_COLS);
+      ensureGoalsWithinBounds();
+      updateCanvasSize();
+      resetAnimationState();
+      draw();
+      break;
+    case 'stepDelayMs':
+      playbackDelayMs = value;
+      break;
+    default:
+      break;
+  }
+}
+
+function ensureGoalsWithinBounds() {
+  state.goals = state.goals.filter((goal) => goal.row >= 0 && goal.row < state.rows && goal.col >= 0 && goal.col < state.cols);
+  currentGoals = state.goals.map((goal) => ({ ...goal }));
+}
+
+function toggleGoal(row, col) {
+  const index = state.goals.findIndex((goal) => goal.row === row && goal.col === col);
+  if (index >= 0) {
+    state.goals.splice(index, 1);
+  } else {
+    state.goals.push({ row, col, reward: DEFAULT_GOAL_REWARD });
+  }
+  currentGoals = state.goals.map((goal) => ({ ...goal }));
+  resetAnimationState();
+  draw();
+}
+
+function handleCanvasClick(event) {
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const col = clamp(Math.floor(x / CELL_SIZE), 0, state.cols - 1);
+  const row = clamp(Math.floor(y / CELL_SIZE), 0, state.rows - 1);
+  toggleGoal(row, col);
+}
+
+function startResize(event) {
+  event.preventDefault();
+  isResizingCanvas = true;
+  resizeStart = {
+    x: event.clientX,
+    y: event.clientY,
+    rows: state.rows,
+    cols: state.cols,
+  };
+  document.body.style.userSelect = 'none';
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup', stopResize);
+}
+
+function onResizeMove(event) {
+  if (!isResizingCanvas) return;
+  const dx = event.clientX - resizeStart.x;
+  const dy = event.clientY - resizeStart.y;
+  const newCols = clamp(Math.round((resizeStart.cols * CELL_SIZE + dx) / CELL_SIZE), MIN_COLS, MAX_COLS);
+  const newRows = clamp(Math.round((resizeStart.rows * CELL_SIZE + dy) / CELL_SIZE), MIN_ROWS, MAX_ROWS);
+  if (newCols !== state.cols || newRows !== state.rows) {
+    state.cols = newCols;
+    state.rows = newRows;
+    ensureGoalsWithinBounds();
+    syncSlidersFromState();
+    updateCanvasSize();
+    resetAnimationState();
+    draw();
+  }
+}
+
+function stopResize() {
+  if (!isResizingCanvas) return;
+  isResizingCanvas = false;
+  document.body.style.userSelect = '';
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', stopResize);
+}
 
 async function loadWasm() {
   if (wasmReady) return;
@@ -31,7 +187,6 @@ function registerHandlers() {
 }
 
 function handleSnapshot(snapshot) {
-  console.log('[snapshot] enqueue', snapshot.status, 'episode', snapshot.episode, 'step', snapshot.step);
   snapshotQueue.push(snapshot);
   if (!isAnimating) {
     isAnimating = true;
@@ -41,12 +196,10 @@ function handleSnapshot(snapshot) {
 
 function processSnapshotQueue() {
   if (snapshotQueue.length === 0) {
-    console.log('[queue] empty');
     isAnimating = false;
     return;
   }
   const snapshot = snapshotQueue.shift();
-  console.log('[queue] process', snapshot.status, 'episode', snapshot.episode, 'step', snapshot.step);
   updateView(snapshot);
   if (snapshot.status === 'running') {
     if (snapshot.episode !== lastEpisodeId) {
@@ -59,7 +212,6 @@ function processSnapshotQueue() {
   }
   if (snapshotQueue.length > 0) {
     const delay = playbackDelayMs > 0 ? playbackDelayMs : DEFAULT_PLAYBACK_DELAY;
-    console.log('[queue] schedule next in', delay, 'ms (remaining', snapshotQueue.length, ')');
     setTimeout(processSnapshotQueue, delay);
   } else {
     isAnimating = false;
@@ -79,12 +231,22 @@ function updateView(snapshot) {
     currentGamma = snapshot.config.gamma;
   }
   if (Array.isArray(snapshot.goals)) {
-    currentGoals = snapshot.goals;
+    currentGoals = snapshot.goals.map((goal) => ({ ...goal }));
   }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
   metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(2)} — delay ${delayLabel}`;
   appendLog(snapshot);
+  if (snapshot.status === 'done' && snapshot.config) {
+    state.rows = snapshot.config.rows;
+    state.cols = snapshot.config.cols;
+    if (Array.isArray(snapshot.config.goals)) {
+      state.goals = snapshot.config.goals.map((goal) => ({ ...goal }));
+    }
+    ensureGoalsWithinBounds();
+    syncSlidersFromState();
+    updateCanvasSize();
+  }
   draw();
 }
 
@@ -117,12 +279,20 @@ function formatStatus(snapshot) {
 }
 
 function draw() {
-  if (!lastSnapshot) return;
+  const snapshot = lastSnapshot || createPlaceholderSnapshot();
   if (currentView === 'heatmap') {
-    drawHeatmap(lastSnapshot.valueMap);
+    drawHeatmap(snapshot.valueMap);
   } else {
-    drawGrid(lastSnapshot);
+    drawGrid(snapshot);
   }
+}
+
+function createPlaceholderSnapshot() {
+  const valueMap = Array.from({ length: state.rows }, () => Array(state.cols).fill(0));
+  return {
+    valueMap,
+    position: { row: state.rows - 1, col: 0 },
+  };
 }
 
 function drawGrid(snapshot) {
@@ -164,8 +334,6 @@ function drawTrail(cellWidth, cellHeight) {
 
 function drawGoals(cellWidth, cellHeight) {
   if (!currentGoals || currentGoals.length === 0) {
-    const defaultCol = lastSnapshot && lastSnapshot.valueMap.length > 0 ? lastSnapshot.valueMap[0].length - 1 : 0;
-    drawCell({ row: 0, col: Math.max(0, defaultCol) }, cellWidth, cellHeight, '#198754');
     return;
   }
   currentGoals.forEach((goal) => {
@@ -212,43 +380,15 @@ function serializeForm(form) {
     epsilon: Number(data.get('epsilon')),
     alpha: Number(data.get('alpha')),
     gamma: Number(data.get('gamma')),
-    rows: Number(data.get('rows')),
-    cols: Number(data.get('cols')),
+    rows: state.rows,
+    cols: state.cols,
     algorithm: String(data.get('algorithm') || 'montecarlo'),
     stepDelayMs: Number(data.get('stepDelayMs')),
-    goals: parseGoals(data.get('goals')),
+    goals: state.goals.map((goal) => ({ ...goal })),
   };
 }
 
-function parseGoals(raw) {
-  if (!raw) {
-    return [];
-  }
-  const lines = String(raw)
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const goals = [];
-  for (const line of lines) {
-    const parts = line.split(',').map((p) => p.trim());
-    if (parts.length !== 3) {
-      console.warn('[goals] skipping invalid goal line', line);
-      continue;
-    }
-    const row = Number(parts[0]);
-    const col = Number(parts[1]);
-    const reward = Number(parts[2]);
-    if (Number.isNaN(row) || Number.isNaN(col) || Number.isNaN(reward)) {
-      console.warn('[goals] skipping invalid goal values', line);
-      continue;
-    }
-    goals.push({ row, col, reward });
-  }
-  return goals;
-}
-
 function attachEventListeners() {
-  const form = document.getElementById('controlForm');
   const stopBtn = document.getElementById('stopBtn');
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -286,19 +426,24 @@ function attachEventListeners() {
       draw();
     });
   });
+  canvas.addEventListener('click', handleCanvasClick);
+  resizeHandle.addEventListener('mousedown', startResize);
 }
 
 function resetAnimationState() {
-  console.log('[state] reset animation state');
   snapshotQueue = [];
   isAnimating = false;
   currentTrail = [];
   lastEpisodeId = 0;
-  currentGoals = [];
+  currentGoals = state.goals.map((goal) => ({ ...goal }));
 }
 
 (async function init() {
   await loadWasm();
   registerHandlers();
+  initializeSliders();
+  ensureGoalsWithinBounds();
+  updateCanvasSize();
   attachEventListeners();
+  draw();
 })();

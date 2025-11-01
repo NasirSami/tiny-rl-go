@@ -34,20 +34,58 @@ body {
   font-size: 1.4rem;
 }
 
-label {
+.slider-label {
   display: flex;
   flex-direction: column;
   font-size: 0.9rem;
   gap: 4px;
 }
 
-input,
+input:not([type=range]),
 select,
 button {
   padding: 8px;
   border-radius: 6px;
   border: 1px solid #ccc;
   font-size: 0.95rem;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: #d0d7de;
+  cursor: pointer;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0d6efd;
+}
+
+input[type=range]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0d6efd;
+  border: none;
+}
+
+.slider-output {
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #333;
 }
 
 button {
@@ -83,6 +121,32 @@ button:hover {
 
 .canvas-container {
   position: relative;
+  display: inline-block;
+}
+
+#gridCanvas {
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #f8f9fa;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  right: 4px;
+  bottom: 4px;
+  background: rgba(13, 110, 253, 0.9);
+  border-radius: 4px;
+  cursor: nwse-resize;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-instructions {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #555;
 }
 
 .view-toggle {
