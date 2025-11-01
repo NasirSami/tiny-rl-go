@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -178,6 +179,8 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		states = append(states, state)
 		rewards = make([]float64, 0, t.env.maxSteps)
 	}
+	visits := make(map[position]int, t.env.rows*t.env.cols)
+	visits[state]++
 	steps := 0
 	episodeReward := 0.0
 	var lastReward float64
@@ -209,6 +212,7 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 			rewards = append(rewards, reward)
 			states = append(states, nextState)
 		}
+		visits[nextState]++
 		out <- t.snapshot(StatusRunning, episode, steps, episodeReward, reward)
 		if t.cfg.StepDelayMs > 0 {
 			select {
@@ -239,6 +243,7 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 	t.totalReward += episodeReward
 	t.totalSteps += steps
 	t.episodesCompleted++
+	t.printVisitHeatmap(episode, visits)
 	out <- t.snapshot(StatusEpisodeComplete, episode, steps, episodeReward, lastReward)
 }
 
@@ -286,6 +291,24 @@ func (t *Trainer) updateSARSA(state position, action int, reward float64, next p
 	target := reward + t.cfg.Gamma*nextValue
 	updated := current + t.cfg.Alpha*(target-current)
 	t.qvalues.set(state.row, state.col, action, updated)
+}
+
+func (t *Trainer) printVisitHeatmap(episode int, visits map[position]int) {
+	if visits == nil {
+		return
+	}
+	fmt.Printf("visit heatmap (episode %d)\n", episode)
+	for r := 0; r < t.env.rows; r++ {
+		for c := 0; c < t.env.cols; c++ {
+			count := visits[position{row: r, col: c}]
+			if count == 0 {
+				fmt.Printf("  . ")
+			} else {
+				fmt.Printf("%3d ", count)
+			}
+		}
+		fmt.Println()
+	}
 }
 
 func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeReward, reward float64) Snapshot {
