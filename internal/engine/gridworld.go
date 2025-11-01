@@ -1,14 +1,15 @@
 package engine
 
 type gridworldEnv struct {
-	rows, cols int
-	startRow   int
-	startCol   int
-	maxSteps   int
-	currRow    int
-	currCol    int
-	stepsTaken int
-	goals      []Goal
+	rows, cols   int
+	startRow     int
+	startCol     int
+	maxSteps     int
+	currRow      int
+	currCol      int
+	stepsTaken   int
+	goals        []Goal
+	initialGoals []Goal
 }
 
 func newGridworldEnv(rows, cols int, goals []Goal) *gridworldEnv {
@@ -26,16 +27,18 @@ func newGridworldEnv(rows, cols int, goals []Goal) *gridworldEnv {
 	if startRow < 0 {
 		startRow = 0
 	}
+	initial := cloneGoalSlice(goals)
 	return &gridworldEnv{
-		rows:       rows,
-		cols:       cols,
-		startRow:   startRow,
-		startCol:   0,
-		maxSteps:   maxSteps,
-		currRow:    startRow,
-		currCol:    0,
-		stepsTaken: 0,
-		goals:      goals,
+		rows:         rows,
+		cols:         cols,
+		startRow:     startRow,
+		startCol:     0,
+		maxSteps:     maxSteps,
+		currRow:      startRow,
+		currCol:      0,
+		stepsTaken:   0,
+		goals:        cloneGoalSlice(goals),
+		initialGoals: initial,
 	}
 }
 
@@ -43,6 +46,7 @@ func (g *gridworldEnv) reset() {
 	g.currRow = g.startRow
 	g.currCol = g.startCol
 	g.stepsTaken = 0
+	g.goals = cloneGoalSlice(g.initialGoals)
 }
 
 func (g *gridworldEnv) step(action int) (float64, bool) {
@@ -53,15 +57,21 @@ func (g *gridworldEnv) step(action int) (float64, bool) {
 	g.currRow = row
 	g.currCol = col
 	g.stepsTaken++
-	for _, goal := range g.goals {
+	reward := 0.0
+	for i, goal := range g.goals {
 		if g.currRow == goal.Row && g.currCol == goal.Col {
-			return goal.Reward, true
+			reward = goal.Reward
+			g.goals = append(g.goals[:i], g.goals[i+1:]...)
+			break
 		}
 	}
-	if g.stepsTaken >= g.maxSteps {
-		return 0, true
+	if reward > 0 && len(g.goals) == 0 {
+		return reward, true
 	}
-	return 0, false
+	if g.stepsTaken >= g.maxSteps {
+		return reward, true
+	}
+	return reward, false
 }
 
 func (g *gridworldEnv) nextPosition(action int) (int, int) {
@@ -89,4 +99,13 @@ func (g *gridworldEnv) nextPosition(action int) (int, int) {
 		col = g.cols - 1
 	}
 	return row, col
+}
+
+func cloneGoalSlice(goals []Goal) []Goal {
+	if len(goals) == 0 {
+		return nil
+	}
+	copied := make([]Goal, len(goals))
+	copy(copied, goals)
+	return copied
 }

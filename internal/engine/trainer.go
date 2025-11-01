@@ -69,9 +69,9 @@ type Trainer struct {
 }
 
 type Goal struct {
-	Row     int
-	Col     int
-	Reward  float64
+	Row    int
+	Col    int
+	Reward float64
 }
 
 func NewTrainer(cfg Config) *Trainer {
