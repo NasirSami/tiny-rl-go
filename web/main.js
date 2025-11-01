@@ -38,6 +38,7 @@ const state = {
 
 state.goals = [{ row: 0, col: state.cols - 1, reward: DEFAULT_GOAL_REWARD }];
 currentGoals = state.goals.map((goal) => ({ ...goal }));
+let currentStepPenalty = Number(form.querySelector('input[name="stepPenalty"]').value);
 
 let isResizingCanvas = false;
 let resizeStart = null;
@@ -68,6 +69,8 @@ function updateSliderOutput(input) {
   const value = Number(input.value);
   if (input.name === 'epsilon' || input.name === 'alpha' || input.name === 'gamma') {
     output.textContent = value.toFixed(2);
+  } else if (input.name === 'stepPenalty') {
+    output.textContent = value.toFixed(3);
   } else {
     output.textContent = Math.round(value);
   }
@@ -102,6 +105,9 @@ function handleSliderChange(name, value) {
       break;
     case 'stepDelayMs':
       playbackDelayMs = value;
+      break;
+    case 'stepPenalty':
+      currentStepPenalty = value;
       break;
     default:
       break;
@@ -230,12 +236,20 @@ function updateView(snapshot) {
   if (snapshot.config && typeof snapshot.config.gamma === 'number') {
     currentGamma = snapshot.config.gamma;
   }
+  if (snapshot.config && typeof snapshot.config.stepPenalty === 'number') {
+    currentStepPenalty = snapshot.config.stepPenalty;
+    const penaltySlider = form.querySelector('input[name="stepPenalty"]');
+    if (penaltySlider) {
+      penaltySlider.value = currentStepPenalty;
+      updateSliderOutput(penaltySlider);
+    }
+  }
   if (Array.isArray(snapshot.goals)) {
     currentGoals = snapshot.goals.map((goal) => ({ ...goal }));
   }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
-  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(2)} — delay ${delayLabel}`;
+  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(2)} — penalty ${currentStepPenalty.toFixed(3)} — delay ${delayLabel}`;
   appendLog(snapshot);
   if (snapshot.status === 'done' && snapshot.config) {
     state.rows = snapshot.config.rows;
@@ -384,6 +398,7 @@ function serializeForm(form) {
     cols: state.cols,
     algorithm: String(data.get('algorithm') || 'montecarlo'),
     stepDelayMs: Number(data.get('stepDelayMs')),
+    stepPenalty: Number(data.get('stepPenalty')),
     goals: state.goals.map((goal) => ({ ...goal })),
   };
 }

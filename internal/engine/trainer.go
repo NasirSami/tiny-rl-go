@@ -30,6 +30,7 @@ type Config struct {
 	Gamma       float64
 	Algorithm   string
 	Goals       []Goal
+	StepPenalty float64
 }
 
 type Position struct {
@@ -96,6 +97,9 @@ func NewTrainer(cfg Config) *Trainer {
 	if cfg.Gamma <= 0 || cfg.Gamma > 1 {
 		cfg.Gamma = 0.9
 	}
+	if cfg.StepPenalty < 0 {
+		cfg.StepPenalty = 0
+	}
 	seed := cfg.Seed
 	if seed == 0 {
 		seed = 1
@@ -106,7 +110,7 @@ func NewTrainer(cfg Config) *Trainer {
 		sanitizedGoals = []Goal{{Row: 0, Col: cfg.Cols - 1, Reward: 1}}
 	}
 	cfg.Goals = cloneGoals(sanitizedGoals)
-	env := newGridworldEnv(cfg.Rows, cfg.Cols, sanitizedGoals)
+	env := newGridworldEnv(cfg.Rows, cfg.Cols, sanitizedGoals, cfg.StepPenalty)
 	var (
 		values  *valueTable
 		qvalues *qTable

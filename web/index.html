@@ -84,6 +84,14 @@
               <span class="slider-output" id="delayOutput">60</span>
             </div>
           </label>
+          <label class="slider-label">
+            <span class="slider-title">Step Penalty</span>
+            <span class="slider-help">Reward deducted each move (encourages shorter paths).</span>
+            <div class="slider-row">
+              <input type="range" name="stepPenalty" min="0" max="0.1" step="0.005" value="0.01" data-output-target="penaltyOutput" />
+              <span class="slider-output" id="penaltyOutput">0.01</span>
+            </div>
+          </label>
           <div class="buttons">
             <button type="submit">Start Training</button>
             <button type="button" id="stopBtn">Stop</button>

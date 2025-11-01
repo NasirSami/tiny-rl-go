@@ -43,12 +43,13 @@ func runTrain(args []string) error {
 	epsilon := fs.Float64("epsilon", 0.1, "exploration rate (0-1)")
 	alpha := fs.Float64("alpha", 0.1, "learning rate (0-1)")
 	gamma := fs.Float64("gamma", 0.9, "discount factor (0-1)")
-rows := fs.Int("rows", 4, "grid rows")
-cols := fs.Int("cols", 4, "grid columns")
-stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
-algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo, q-learning, sarsa)")
-var goals goalListFlag
-fs.Func("goal", "goal specification row,col,reward (repeatable)", goals.Set)
+	rows := fs.Int("rows", 4, "grid rows")
+	cols := fs.Int("cols", 4, "grid columns")
+	stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
+	algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo, q-learning, sarsa)")
+	var goals goalListFlag
+	fs.Func("goal", "goal specification row,col,reward (repeatable)", goals.Set)
+	stepPenalty := fs.Float64("step-penalty", 0.01, "per-step penalty (non-negative)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -80,21 +81,25 @@ fs.Func("goal", "goal specification row,col,reward (repeatable)", goals.Set)
 	if *gamma < 0 || *gamma > 1 {
 		return fmt.Errorf("gamma must be between 0 and 1 (got %.2f)", *gamma)
 	}
+	if *stepPenalty < 0 {
+		return fmt.Errorf("step-penalty must be non-negative (got %.4f)", *stepPenalty)
+	}
 
-fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *gamma, *rows, *cols, *stepDelay, *algorithm)
+	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d stepPenalty=%.3f algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *gamma, *rows, *cols, *stepDelay, *stepPenalty, *algorithm)
 
-cfg := engine.Config{
-    Episodes:    *episodes,
-    Seed:        *seed,
-    Epsilon:     *epsilon,
-    Alpha:       *alpha,
-    Gamma:       *gamma,
-    Rows:        *rows,
-    Cols:        *cols,
-    StepDelayMs: *stepDelay,
-    Algorithm:   *algorithm,
-    Goals:       goals.Goals,
-}
+	cfg := engine.Config{
+		Episodes:    *episodes,
+		Seed:        *seed,
+		Epsilon:     *epsilon,
+		Alpha:       *alpha,
+		Gamma:       *gamma,
+		Rows:        *rows,
+		Cols:        *cols,
+		StepDelayMs: *stepDelay,
+		Algorithm:   *algorithm,
+		Goals:       goals.Goals,
+		StepPenalty: *stepPenalty,
+	}
 	trainer := engine.NewTrainer(cfg)
 	ctx := context.Background()
 	var (

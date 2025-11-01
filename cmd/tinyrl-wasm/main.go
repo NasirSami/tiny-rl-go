@@ -116,6 +116,7 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		"stepDelayMs": snapshot.Config.StepDelayMs,
 		"algorithm":   snapshot.Config.Algorithm,
 		"goals":       goals,
+		"stepPenalty": snapshot.Config.StepPenalty,
 	}
 	payload := map[string]interface{}{
 		"step":              snapshot.Step,

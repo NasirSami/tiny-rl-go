@@ -10,9 +10,10 @@ type gridworldEnv struct {
 	stepsTaken   int
 	goals        []Goal
 	initialGoals []Goal
+	stepPenalty  float64
 }
 
-func newGridworldEnv(rows, cols int, goals []Goal) *gridworldEnv {
+func newGridworldEnv(rows, cols int, goals []Goal, stepPenalty float64) *gridworldEnv {
 	if rows <= 0 {
 		rows = 1
 	}
@@ -39,6 +40,7 @@ func newGridworldEnv(rows, cols int, goals []Goal) *gridworldEnv {
 		stepsTaken:   0,
 		goals:        cloneGoalSlice(goals),
 		initialGoals: initial,
+		stepPenalty:  stepPenalty,
 	}
 }
 
@@ -58,9 +60,12 @@ func (g *gridworldEnv) step(action int) (float64, bool) {
 	g.currCol = col
 	g.stepsTaken++
 	reward := 0.0
+	if g.stepPenalty > 0 {
+		reward -= g.stepPenalty
+	}
 	for i, goal := range g.goals {
 		if g.currRow == goal.Row && g.currCol == goal.Col {
-			reward = goal.Reward
+			reward += goal.Reward
 			g.goals = append(g.goals[:i], g.goals[i+1:]...)
 			break
 		}
