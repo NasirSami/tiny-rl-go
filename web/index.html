@@ -12,7 +12,8 @@
         <h1>tiny-rl-go</h1>
         <form id="controlForm">
           <label class="slider-label">
-            Algorithm
+            <span class="slider-title">Algorithm</span>
+            <span class="slider-help">Choose the learning strategy for the agent.</span>
             <select name="algorithm">
               <option value="montecarlo" selected>Monte Carlo</option>
               <option value="q-learning">Q-Learning</option>
@@ -20,56 +21,64 @@
             </select>
           </label>
           <label class="slider-label">
-            Episodes
+            <span class="slider-title">Episodes</span>
+            <span class="slider-help">Number of training episodes per run.</span>
             <div class="slider-row">
               <input type="range" name="episodes" min="1" max="200" value="30" data-output-target="episodesOutput" />
               <span class="slider-output" id="episodesOutput">30</span>
             </div>
           </label>
           <label class="slider-label">
-            Seed
+            <span class="slider-title">Seed</span>
+            <span class="slider-help">Deterministic seed for reproducible runs.</span>
             <div class="slider-row">
               <input type="range" name="seed" min="0" max="1000" value="7" data-output-target="seedOutput" />
               <span class="slider-output" id="seedOutput">7</span>
             </div>
           </label>
           <label class="slider-label">
-            Epsilon
+            <span class="slider-title">Epsilon</span>
+            <span class="slider-help">Exploration rate (probability of random action).</span>
             <div class="slider-row">
               <input type="range" name="epsilon" min="0" max="1" step="0.01" value="0.1" data-output-target="epsilonOutput" />
               <span class="slider-output" id="epsilonOutput">0.10</span>
             </div>
           </label>
           <label class="slider-label">
-            Alpha
+            <span class="slider-title">Alpha</span>
+            <span class="slider-help">Learning rate for value/Q updates.</span>
             <div class="slider-row">
               <input type="range" name="alpha" min="0" max="1" step="0.01" value="0.1" data-output-target="alphaOutput" />
               <span class="slider-output" id="alphaOutput">0.10</span>
             </div>
           </label>
           <label class="slider-label">
-            Gamma
+            <span class="slider-title">Gamma</span>
+            <span class="slider-help">Discount factor for future rewards.</span>
             <div class="slider-row">
               <input type="range" name="gamma" min="0" max="1" step="0.01" value="0.9" data-output-target="gammaOutput" />
               <span class="slider-output" id="gammaOutput">0.90</span>
             </div>
           </label>
           <label class="slider-label">
-            Rows
+            <span class="slider-title">Rows</span>
+            <span class="slider-help">Number of grid rows.</span>
             <div class="slider-row">
               <input type="range" name="rows" min="1" max="20" value="4" data-output-target="rowsOutput" />
               <span class="slider-output" id="rowsOutput">4</span>
             </div>
           </label>
           <label class="slider-label">
-            Columns
+            <span class="slider-title">Columns</span>
+            <span class="slider-help">Number of grid columns.</span>
             <div class="slider-row">
               <input type="range" name="cols" min="1" max="20" value="4" data-output-target="colsOutput" />
               <span class="slider-output" id="colsOutput">4</span>
             </div>
           </label>
           <label class="slider-label">
-            Step Delay (ms)
+            <span class="slider-title">Step Delay (ms)</span>
+            <span class="slider-help">Playback delay between rendered steps.</span>
             <div class="slider-row">
               <input type="range" name="stepDelayMs" min="0" max="1000" step="10" value="120" data-output-target="delayOutput" />
               <span class="slider-output" id="delayOutput">120</span>

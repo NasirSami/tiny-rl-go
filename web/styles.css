@@ -41,6 +41,15 @@ body {
   gap: 4px;
 }
 
+.slider-title {
+  font-weight: 600;
+}
+
+.slider-help {
+  font-size: 0.75rem;
+  color: #666;
+}
+
 input:not([type=range]),
 select,
 button {
