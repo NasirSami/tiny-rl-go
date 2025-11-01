@@ -23,7 +23,7 @@ const rowSlider = form.querySelector('input[name="rows"]');
 const colSlider = form.querySelector('input[name="cols"]');
 const sliderInputs = form.querySelectorAll('input[type="range"][data-output-target]');
 
-const CELL_SIZE = 40;
+const CELL_SIZE = 24;
 const MIN_ROWS = 1;
 const MAX_ROWS = 20;
 const MIN_COLS = 1;
