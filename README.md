@@ -44,3 +44,7 @@ Goal: learn single-agent and multi-agent systems by building everything yourself
     --alpha 0.5 --gamma 0.9 \
     --goal 0,3,1 --goal 2,2,0.5
   ```
+- Include a per-step penalty to discourage loops:
+  ```bash
+  go run ./cmd/tinyrl train --algorithm montecarlo --step-penalty 0.02
+  ```
