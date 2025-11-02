@@ -7,6 +7,23 @@ import (
 	"time"
 )
 
+func clampFloat(value, min, max float64) float64 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 const (
 	StatusRunning         = "running"
 	StatusEpisodeComplete = "episode_complete"
@@ -21,17 +38,19 @@ const (
 )
 
 type Config struct {
-	Episodes    int
-	Seed        int64
-	Epsilon     float64
-	Alpha       float64
-	Rows        int
-	Cols        int
-	StepDelayMs int
-	Gamma       float64
-	Algorithm   string
-	Goals       []Goal
-	StepPenalty float64
+	Episodes     int
+	Seed         int64
+	Epsilon      float64
+	EpsilonMin   float64
+	EpsilonDecay float64
+	Alpha        float64
+	Rows         int
+	Cols         int
+	StepDelayMs  int
+	Gamma        float64
+	Algorithm    string
+	Goals        []Goal
+	StepPenalty  float64
 }
 
 type Position struct {
@@ -101,6 +120,15 @@ func NewTrainer(cfg Config) *Trainer {
 	if cfg.StepPenalty < 0 {
 		cfg.StepPenalty = 0
 	}
+	if cfg.Epsilon <= 0 || cfg.Epsilon > 1 {
+		cfg.Epsilon = 0.1
+	}
+	if cfg.EpsilonMin < 0 || cfg.EpsilonMin > cfg.Epsilon {
+		cfg.EpsilonMin = 0
+	}
+	if cfg.EpsilonDecay < 0 {
+		cfg.EpsilonDecay = 0
+	}
 	seed := cfg.Seed
 	if seed == 0 {
 		seed = 1
@@ -162,7 +190,14 @@ func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
 				return
 			default:
 			}
+			if t.cfg.EpsilonDecay > 0 && t.cfg.Algorithm == AlgorithmMonteCarlo {
+				currentEps := clampFloat(t.cfg.Epsilon, 0, 1)
+				t.agent.setEpsilon(currentEps)
+			}
 			t.runEpisode(ctx, episode, out)
+			if t.cfg.EpsilonDecay > 0 && t.cfg.Algorithm == AlgorithmMonteCarlo {
+				t.cfg.Epsilon = maxFloat(t.cfg.EpsilonMin, t.cfg.Epsilon*t.cfg.EpsilonDecay)
+			}
 		}
 		out <- t.snapshot(StatusDone, t.cfg.Episodes, 0, 0, 0)
 	}()

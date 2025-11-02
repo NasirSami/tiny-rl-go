@@ -119,3 +119,13 @@ func (a *epsilonGreedyAgent) recordVisit(env *gridworldEnv, action int) {
 	row, col := env.nextPosition(action)
 	a.stateVisits[position{row: row, col: col}]++
 }
+
+func (a *epsilonGreedyAgent) setEpsilon(value float64) {
+	if value < 0 {
+		value = 0
+	}
+	if value > 1 {
+		value = 1
+	}
+	a.epsilon = value
+}

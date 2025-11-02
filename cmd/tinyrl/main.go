@@ -1,15 +1,15 @@
 package main
 
 import (
-    "context"
-    "errors"
-    "flag"
-    "fmt"
-    "os"
-    "strconv"
-    "strings"
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
 
-    "tiny-rl-go/internal/engine"
+	"tiny-rl-go/internal/engine"
 )
 
 func main() {
@@ -41,6 +41,8 @@ func runTrain(args []string) error {
 	episodes := fs.Int("episodes", 1, "number of training episodes")
 	seed := fs.Int64("seed", 0, "deterministic seed (0 for default)")
 	epsilon := fs.Float64("epsilon", 0.1, "exploration rate (0-1)")
+	epsilonMin := fs.Float64("epsilon-min", 0, "minimum exploration rate")
+	epsilonDecay := fs.Float64("epsilon-decay", 1, "per-episode decay multiplier")
 	alpha := fs.Float64("alpha", 0.1, "learning rate (0-1)")
 	gamma := fs.Float64("gamma", 0.9, "discount factor (0-1)")
 	rows := fs.Int("rows", 4, "grid rows")
@@ -60,6 +62,12 @@ func runTrain(args []string) error {
 	}
 	if *epsilon < 0 || *epsilon > 1 {
 		return fmt.Errorf("epsilon must be between 0 and 1 (got %.2f)", *epsilon)
+	}
+	if *epsilonMin < 0 || *epsilonMin > *epsilon {
+		return fmt.Errorf("epsilon-min must be between 0 and epsilon (got %.2f)", *epsilonMin)
+	}
+	if *epsilonDecay < 0 {
+		return fmt.Errorf("epsilon-decay must be non-negative (got %.2f)", *epsilonDecay)
 	}
 	if *alpha < 0 || *alpha > 1 {
 		return fmt.Errorf("alpha must be between 0 and 1 (got %.2f)", *alpha)
@@ -85,20 +93,22 @@ func runTrain(args []string) error {
 		return fmt.Errorf("step-penalty must be non-negative (got %.4f)", *stepPenalty)
 	}
 
-	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d stepPenalty=%.3f algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *alpha, *gamma, *rows, *cols, *stepDelay, *stepPenalty, *algorithm)
+	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f epsilonMin=%.2f epsilonDecay=%.3f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d stepPenalty=%.3f algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *epsilonMin, *epsilonDecay, *alpha, *gamma, *rows, *cols, *stepDelay, *stepPenalty, *algorithm)
 
 	cfg := engine.Config{
-		Episodes:    *episodes,
-		Seed:        *seed,
-		Epsilon:     *epsilon,
-		Alpha:       *alpha,
-		Gamma:       *gamma,
-		Rows:        *rows,
-		Cols:        *cols,
-		StepDelayMs: *stepDelay,
-		Algorithm:   *algorithm,
-		Goals:       goals.Goals,
-		StepPenalty: *stepPenalty,
+		Episodes:     *episodes,
+		Seed:         *seed,
+		Epsilon:      *epsilon,
+		EpsilonMin:   *epsilonMin,
+		EpsilonDecay: *epsilonDecay,
+		Alpha:        *alpha,
+		Gamma:        *gamma,
+		Rows:         *rows,
+		Cols:         *cols,
+		StepDelayMs:  *stepDelay,
+		Algorithm:    *algorithm,
+		Goals:        goals.Goals,
+		StepPenalty:  *stepPenalty,
 	}
 	trainer := engine.NewTrainer(cfg)
 	ctx := context.Background()
