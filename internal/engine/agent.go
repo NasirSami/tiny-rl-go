@@ -80,7 +80,9 @@ func (a *epsilonGreedyAgent) greedyValueAction(env *gridworldEnv) int {
 	var candidates []candidate
 	for action := 0; action < 4; action++ {
 		row, col := env.nextPosition(action)
-		score := a.values.get(row, col)
+		distance := env.potential(row, col)
+		band := distanceBand(distance)
+		score := a.values.get(row, col, band)
 		if score > bestScore {
 			bestScore = score
 			candidates = candidates[:0]
@@ -128,4 +130,45 @@ func (a *epsilonGreedyAgent) setEpsilon(value float64) {
 		value = 1
 	}
 	a.epsilon = value
+}
+
+func (a *epsilonGreedyAgent) softmaxValueAction(env *gridworldEnv, temperature float64) int {
+	if a.values == nil || temperature <= 0 {
+		return a.greedyValueAction(env)
+	}
+	var scores [4]float64
+	var maxScore float64 = math.Inf(-1)
+	for action := 0; action < 4; action++ {
+		row, col := env.nextPosition(action)
+		distance := env.potential(row, col)
+		band := distanceBand(distance)
+		score := a.values.get(row, col, band) / temperature
+		scores[action] = score
+		if score > maxScore {
+			maxScore = score
+		}
+	}
+	var sum float64
+	for action := 0; action < 4; action++ {
+		scores[action] = math.Exp(scores[action] - maxScore)
+		sum += scores[action]
+	}
+	if sum == 0 {
+		return a.greedyValueAction(env)
+	}
+	r := a.rng.Float64() * sum
+	acc := 0.0
+	for action := 0; action < 4; action++ {
+		acc += scores[action]
+		if r <= acc {
+			a.recordVisit(env, action)
+			return action
+		}
+	}
+	return a.greedyValueAction(env)
+}
+
+func (a *epsilonGreedyAgent) resetVisits() {
+	a.qVisits = make(map[actionKey]int)
+	a.stateVisits = make(map[position]int)
 }

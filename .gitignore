@@ -1,0 +1,4 @@
+# Build artifacts
+tinyrl-wasm/
+tinyrl-wasm
+web/tinyrl.wasm

@@ -24,6 +24,28 @@ func maxFloat(a, b float64) float64 {
 	return b
 }
 
+// ScaledStepPenalty downscales the per-step penalty on large grids so the default goal reward remains meaningful.
+// Uses the Manhattan distance from start to goal as a proxy for the shortest path length and clamps the scaling
+// factor to avoid extreme penalties on oversized or tiny boards.
+func ScaledStepPenalty(rows, cols int, base float64) float64 {
+	if base <= 0 {
+		return 0
+	}
+	pathLen := float64(rows + cols - 2)
+	if pathLen < 1 {
+		pathLen = 1
+	}
+	reference := 6.0 // matches the 3+3 path of the default 4x4 board
+	scale := pathLen / reference
+	if scale < 0.5 {
+		scale = 0.5
+	}
+	if scale > 3 {
+		scale = 3
+	}
+	return base / scale
+}
+
 const (
 	StatusRunning         = "running"
 	StatusEpisodeComplete = "episode_complete"
@@ -37,20 +59,35 @@ const (
 	AlgorithmSARSA      = "sarsa"
 )
 
+const (
+	distanceRewardScale  = 0.1
+	distancePenaltyScale = 0.2
+)
+
 type Config struct {
-	Episodes     int
-	Seed         int64
-	Epsilon      float64
-	EpsilonMin   float64
-	EpsilonDecay float64
-	Alpha        float64
-	Rows         int
-	Cols         int
-	StepDelayMs  int
-	Gamma        float64
-	Algorithm    string
-	Goals        []Goal
-	StepPenalty  float64
+	Episodes              int
+	Seed                  int64
+	Epsilon               float64
+	EpsilonMin            float64
+	EpsilonDecay          float64
+	Alpha                 float64
+	Rows                  int
+	Cols                  int
+	StepDelayMs           int
+	MaxSteps              int
+	Gamma                 float64
+	Algorithm             string
+	Goals                 []Goal
+	StepPenalty           float64
+	RandomStart           bool
+	DumpTrajectory        bool
+	GoalCount             int
+	GoalInterval          int
+	SoftmaxTemperature    float64
+	SoftmaxMinTemperature float64
+	Lambda                float64
+	WarmupEpisodes        int
+	WarmupStepPenalty     float64
 }
 
 type Position struct {
@@ -77,6 +114,7 @@ type Snapshot struct {
 
 type Trainer struct {
 	cfg               Config
+	baseStepPenalty   float64
 	rng               *rand.Rand
 	env               *gridworldEnv
 	agent             *epsilonGreedyAgent
@@ -114,6 +152,9 @@ func NewTrainer(cfg Config) *Trainer {
 	if cfg.StepDelayMs < 0 {
 		cfg.StepDelayMs = 0
 	}
+	if cfg.MaxSteps < 0 {
+		cfg.MaxSteps = 0
+	}
 	if cfg.Gamma <= 0 || cfg.Gamma > 1 {
 		cfg.Gamma = 0.9
 	}
@@ -129,6 +170,30 @@ func NewTrainer(cfg Config) *Trainer {
 	if cfg.EpsilonDecay < 0 {
 		cfg.EpsilonDecay = 0
 	}
+	if cfg.GoalCount < 0 {
+		cfg.GoalCount = 0
+	}
+	if cfg.GoalInterval < 0 {
+		cfg.GoalInterval = 0
+	}
+	if cfg.SoftmaxTemperature <= 0 {
+		cfg.SoftmaxTemperature = 1
+	}
+	if cfg.SoftmaxMinTemperature < 0 {
+		cfg.SoftmaxMinTemperature = 0
+	}
+	if cfg.SoftmaxMinTemperature > cfg.SoftmaxTemperature {
+		cfg.SoftmaxMinTemperature = cfg.SoftmaxTemperature
+	}
+	if cfg.Lambda < 0 || cfg.Lambda > 1 {
+		cfg.Lambda = 0.9
+	}
+	if cfg.WarmupEpisodes < 0 {
+		cfg.WarmupEpisodes = 0
+	}
+	if cfg.WarmupStepPenalty < 0 {
+		cfg.WarmupStepPenalty = 0
+	}
 	seed := cfg.Seed
 	if seed == 0 {
 		seed = 1
@@ -136,10 +201,13 @@ func NewTrainer(cfg Config) *Trainer {
 	rng := rand.New(rand.NewSource(seed))
 	sanitizedGoals := sanitizeGoals(cfg.Goals, cfg.Rows, cfg.Cols)
 	if len(sanitizedGoals) == 0 {
-		sanitizedGoals = []Goal{{Row: 0, Col: cfg.Cols - 1, Reward: 1}}
+		reward := maxFloat(1, float64(cfg.Rows+cfg.Cols-2)/2.5)
+		sanitizedGoals = []Goal{{Row: 0, Col: cfg.Cols - 1, Reward: reward}}
 	}
 	cfg.Goals = cloneGoals(sanitizedGoals)
-	env := newGridworldEnv(cfg.Rows, cfg.Cols, sanitizedGoals, cfg.StepPenalty)
+	effectivePenalty := ScaledStepPenalty(cfg.Rows, cfg.Cols, cfg.StepPenalty)
+	cfg.StepPenalty = effectivePenalty
+	env := newGridworldEnv(cfg.Rows, cfg.Cols, sanitizedGoals, effectivePenalty, cfg.MaxSteps)
 	var (
 		values  *valueTable
 		qvalues *qTable
@@ -151,12 +219,13 @@ func NewTrainer(cfg Config) *Trainer {
 	}
 	agent := newEpsilonGreedyAgent(rng, values, qvalues, cfg.Epsilon)
 	return &Trainer{
-		cfg:     cfg,
-		rng:     rng,
-		env:     env,
-		agent:   agent,
-		values:  values,
-		qvalues: qvalues,
+		cfg:             cfg,
+		baseStepPenalty: effectivePenalty,
+		rng:             rng,
+		env:             env,
+		agent:           agent,
+		values:          values,
+		qvalues:         qvalues,
 	}
 }
 
@@ -190,12 +259,12 @@ func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
 				return
 			default:
 			}
-			if t.cfg.EpsilonDecay > 0 && t.cfg.Algorithm == AlgorithmMonteCarlo {
+			if t.cfg.EpsilonDecay > 0 {
 				currentEps := clampFloat(t.cfg.Epsilon, 0, 1)
 				t.agent.setEpsilon(currentEps)
 			}
 			t.runEpisode(ctx, episode, out)
-			if t.cfg.EpsilonDecay > 0 && t.cfg.Algorithm == AlgorithmMonteCarlo {
+			if t.cfg.EpsilonDecay > 0 {
 				t.cfg.Epsilon = maxFloat(t.cfg.EpsilonMin, t.cfg.Epsilon*t.cfg.EpsilonDecay)
 			}
 		}
@@ -205,13 +274,23 @@ func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
 }
 
 func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapshot) {
+	if t.cfg.Algorithm == AlgorithmMonteCarlo {
+		t.applyWarmupPenalty(episode)
+		t.agent.resetVisits()
+	}
 	t.env.reset()
+	if t.cfg.RandomStart {
+		t.applyRandomStart()
+	}
 	state := position{row: t.env.currRow, col: t.env.currCol}
 	action := t.agent.act(t.env)
 	var states []position
 	var rewards []float64
+	var bands []int
 	if t.values != nil {
 		states = append(states, state)
+		initialBand := distanceBand(t.env.potential(state.row, state.col))
+		bands = append(bands, initialBand)
 		rewards = make([]float64, 0, t.env.maxSteps)
 	}
 	visits := make(map[position]int, t.env.rows*t.env.cols)
@@ -219,6 +298,7 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 	steps := 0
 	episodeReward := 0.0
 	var lastReward float64
+	goalReached := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -226,13 +306,21 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 			return
 		default:
 		}
-		reward, done := t.env.step(action)
+		prevDistance := t.env.potential(state.row, state.col)
+		baseReward, done := t.env.step(action)
+		nextState := position{row: t.env.currRow, col: t.env.currCol}
+		newDistance := t.env.potential(nextState.row, nextState.col)
+		reward := baseReward
+		delta := prevDistance - newDistance
+		reward += 0.1 * delta
+		if done && len(t.env.goals) == 0 {
+			goalReached = true
+		}
 		t.agent.update(reward)
 		episodeReward += reward
 		steps++
 		t.step++
 		lastReward = reward
-		nextState := position{row: t.env.currRow, col: t.env.currCol}
 		var nextAction int
 		if t.qvalues != nil {
 			if t.cfg.Algorithm == AlgorithmQLearning {
@@ -246,6 +334,8 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		} else {
 			rewards = append(rewards, reward)
 			states = append(states, nextState)
+			nextBand := distanceBand(newDistance)
+			bands = append(bands, nextBand)
 		}
 		visits[nextState]++
 		out <- t.snapshot(StatusRunning, episode, steps, episodeReward, reward)
@@ -271,10 +361,10 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 			action = t.agent.act(t.env)
 		}
 	}
-	if episodeReward > 0 {
+	if goalReached {
 		t.successCount++
 	}
-	t.updateMonteCarloValues(states, rewards)
+	t.updateMonteCarloValues(states, rewards, bands)
 	t.totalReward += episodeReward
 	t.totalSteps += steps
 	t.episodesCompleted++
@@ -282,22 +372,60 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 	out <- t.snapshot(StatusEpisodeComplete, episode, steps, episodeReward, lastReward)
 }
 
-func (t *Trainer) updateMonteCarloValues(states []position, rewards []float64) {
+func (t *Trainer) updateMonteCarloValues(states []position, rewards []float64, bands []int) {
 	if t.values == nil || len(states) == 0 || len(rewards) == 0 {
 		return
 	}
-	seen := make(map[position]bool, len(states))
-	returnSoFar := 0.0
+	if len(bands) != len(states) {
+		return
+	}
+	type key struct {
+		row  int
+		col  int
+		band int
+	}
+	seen := make(map[key]bool, len(states))
+	G := 0.0
 	for i := len(rewards) - 1; i >= 0; i-- {
-		returnSoFar += rewards[i]
+		G = rewards[i] + t.cfg.Gamma*G
 		state := states[i]
-		if seen[state] {
+		band := bands[i]
+		k := key{row: state.row, col: state.col, band: band}
+		if seen[k] {
 			continue
 		}
-		seen[state] = true
-		current := t.values.data[state.row][state.col]
-		t.values.data[state.row][state.col] = current + t.cfg.Alpha*(returnSoFar-current)
+		seen[k] = true
+		current := t.values.get(state.row, state.col, band)
+		delta := t.cfg.Alpha * (G - current)
+		t.values.add(state.row, state.col, band, delta)
 	}
+}
+
+func (t *Trainer) applyWarmupPenalty(episode int) {
+	if t.env == nil {
+		return
+	}
+	penalty := t.baseStepPenalty
+	if t.cfg.WarmupEpisodes > 0 && episode <= t.cfg.WarmupEpisodes {
+		if t.cfg.WarmupStepPenalty > 0 {
+			penalty = t.cfg.WarmupStepPenalty
+		}
+	}
+	if penalty < 0 {
+		penalty = 0
+	}
+	t.env.setStepPenalty(penalty)
+}
+
+func (t *Trainer) applyRandomStart() {
+	if t.env == nil || t.rng == nil {
+		return
+	}
+	if t.env.rows <= 0 || t.env.cols <= 0 {
+		return
+	}
+	t.env.currRow = t.rng.Intn(t.env.rows)
+	t.env.currCol = t.rng.Intn(t.env.cols)
 }
 
 func (t *Trainer) updateQLearning(state position, action int, reward float64, next position, done bool) {

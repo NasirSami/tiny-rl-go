@@ -24,8 +24,8 @@
             <span class="slider-title">Episodes</span>
             <span class="slider-help">Number of training episodes per run.</span>
             <div class="slider-row">
-              <input type="range" name="episodes" min="1" max="200" value="30" data-output-target="episodesOutput" />
-              <span class="slider-output" id="episodesOutput">30</span>
+              <input type="range" name="episodes" min="1" max="300" value="100" data-output-target="episodesOutput" />
+              <span class="slider-output" id="episodesOutput">100</span>
             </div>
           </label>
           <label class="slider-label">
@@ -40,16 +40,16 @@
             <span class="slider-title">Epsilon</span>
             <span class="slider-help">Exploration rate (probability of random action).</span>
             <div class="slider-row">
-              <input type="range" name="epsilon" min="0" max="1" step="0.01" value="0.1" data-output-target="epsilonOutput" />
-              <span class="slider-output" id="epsilonOutput">0.10</span>
+              <input type="range" name="epsilon" min="0" max="1" step="0.01" value="0.5" data-output-target="epsilonOutput" />
+              <span class="slider-output" id="epsilonOutput">0.50</span>
             </div>
           </label>
           <label class="slider-label">
             <span class="slider-title">Alpha</span>
             <span class="slider-help">Learning rate for value/Q updates.</span>
             <div class="slider-row">
-              <input type="range" name="alpha" min="0" max="1" step="0.01" value="0.1" data-output-target="alphaOutput" />
-              <span class="slider-output" id="alphaOutput">0.10</span>
+              <input type="range" name="alpha" min="0" max="1" step="0.01" value="0.2" data-output-target="alphaOutput" />
+              <span class="slider-output" id="alphaOutput">0.20</span>
             </div>
           </label>
           <label class="slider-label">
@@ -88,8 +88,24 @@
             <span class="slider-title">Step Penalty</span>
             <span class="slider-help">Reward deducted each move (encourages shorter paths).</span>
             <div class="slider-row">
-              <input type="range" name="stepPenalty" min="0" max="0.1" step="0.005" value="0.01" data-output-target="penaltyOutput" />
-              <span class="slider-output" id="penaltyOutput">0.01</span>
+              <input type="range" name="stepPenalty" min="0" max="0.1" step="0.005" value="0.02" data-output-target="penaltyOutput" />
+              <span class="slider-output" id="penaltyOutput">0.02</span>
+            </div>
+          </label>
+          <label class="slider-label">
+            <span class="slider-title">Goal Count</span>
+            <span class="slider-help">Number of goals auto-placed before training starts.</span>
+            <div class="slider-row">
+              <input type="range" name="goalCount" min="0" max="10" step="1" value="2" data-output-target="goalCountOutput" />
+              <span class="slider-output" id="goalCountOutput">2</span>
+            </div>
+          </label>
+          <label class="slider-label">
+            <span class="slider-title">Goal Interval</span>
+            <span class="slider-help">Episodes between goal reshuffles (0 keeps layout).</span>
+            <div class="slider-row">
+              <input type="range" name="goalInterval" min="0" max="10" step="1" value="0" data-output-target="goalIntervalOutput" />
+              <span class="slider-output" id="goalIntervalOutput">0</span>
             </div>
           </label>
           <div class="buttons">
@@ -108,7 +124,7 @@
             <button type="button" data-view="heatmap">Heatmap</button>
           </div>
         </div>
-        <p class="canvas-instructions">Drag the corner to resize. Click cells to add/remove goals.</p>
+        <p class="canvas-instructions">Drag the corner to resize. Goals are auto-placed based on the sliders.</p>
       </main>
       <section class="metrics" id="metrics">
         <h2>Metrics</h2>

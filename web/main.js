@@ -21,6 +21,8 @@ const resizeHandle = document.getElementById('resizeHandle');
 const form = document.getElementById('controlForm');
 const rowSlider = form.querySelector('input[name="rows"]');
 const colSlider = form.querySelector('input[name="cols"]');
+const goalCountSlider = form.querySelector('input[name="goalCount"]');
+const goalIntervalSlider = form.querySelector('input[name="goalInterval"]');
 const sliderInputs = form.querySelectorAll('input[type="range"][data-output-target]');
 
 const CELL_SIZE = 24;
@@ -34,9 +36,13 @@ const state = {
   rows: Number(rowSlider.value),
   cols: Number(colSlider.value),
   goals: [],
+  goalCount: Number(goalCountSlider.value),
+  goalInterval: Number(goalIntervalSlider.value),
 };
 
-state.goals = [{ row: 0, col: state.cols - 1, reward: DEFAULT_GOAL_REWARD }];
+if (state.goalCount === 0) {
+  state.goals = [{ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD }];
+}
 currentGoals = state.goals.map((goal) => ({ ...goal }));
 let currentStepPenalty = Number(form.querySelector('input[name="stepPenalty"]').value);
 
@@ -109,6 +115,19 @@ function handleSliderChange(name, value) {
     case 'stepPenalty':
       currentStepPenalty = value;
       break;
+    case 'goalCount':
+  state.goalCount = Math.max(0, Math.round(value));
+  if (state.goalCount > 0) {
+    state.goals = generateAutoGoals(state.goalCount);
+  } else if (state.goals.length === 0) {
+    state.goals = [{ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD }];
+  }
+  resetAnimationState();
+  draw();
+  break;
+    case 'goalInterval':
+      state.goalInterval = Math.max(0, Math.round(value));
+      break;
     default:
       break;
   }
@@ -116,28 +135,33 @@ function handleSliderChange(name, value) {
 
 function ensureGoalsWithinBounds() {
   state.goals = state.goals.filter((goal) => goal.row >= 0 && goal.row < state.rows && goal.col >= 0 && goal.col < state.cols);
-  currentGoals = state.goals.map((goal) => ({ ...goal }));
-}
-
-function toggleGoal(row, col) {
-  const index = state.goals.findIndex((goal) => goal.row === row && goal.col === col);
-  if (index >= 0) {
-    state.goals.splice(index, 1);
-  } else {
-    state.goals.push({ row, col, reward: DEFAULT_GOAL_REWARD });
+  if (state.goalCount > 0 && state.goals.length < state.goalCount) {
+    state.goals = generateAutoGoals(state.goalCount);
   }
   currentGoals = state.goals.map((goal) => ({ ...goal }));
-  resetAnimationState();
-  draw();
 }
 
-function handleCanvasClick(event) {
-  const rect = canvas.getBoundingClientRect();
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
-  const col = clamp(Math.floor(x / CELL_SIZE), 0, state.cols - 1);
-  const row = clamp(Math.floor(y / CELL_SIZE), 0, state.rows - 1);
-  toggleGoal(row, col);
+function generateAutoGoals(count) {
+  const goals = [];
+  const used = new Set();
+  const totalCells = state.rows * state.cols;
+  const offset = Math.max(1, Math.floor(totalCells / Math.max(count, 1)));
+  for (let i = 0; i < count; i++) {
+    const idx = Math.min(totalCells - 1, i * offset);
+    const row = Math.floor(idx / state.cols);
+    const col = idx % state.cols;
+    const key = `${row},${col}`;
+    if (used.has(key)) {
+      continue;
+    }
+    used.add(key);
+    goals.push({ row, col, reward: DEFAULT_GOAL_REWARD });
+  }
+  if (goals.length === 0) {
+    goals.push({ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD });
+  }
+  currentGoals = goals.map((goal) => ({ ...goal }));
+  return goals;
 }
 
 function startResize(event) {
@@ -244,12 +268,36 @@ function updateView(snapshot) {
       updateSliderOutput(penaltySlider);
     }
   }
+  const effectivePenalty =
+    typeof snapshot.appliedStepPenalty === 'number' ? snapshot.appliedStepPenalty : currentStepPenalty;
+  if (snapshot.config && typeof snapshot.config.goalCount === 'number') {
+    state.goalCount = snapshot.config.goalCount;
+    if (goalCountSlider) {
+      goalCountSlider.value = state.goalCount;
+      updateSliderOutput(goalCountSlider);
+    }
+  }
+  if (snapshot.config && typeof snapshot.config.goalInterval === 'number') {
+    state.goalInterval = snapshot.config.goalInterval;
+    if (goalIntervalSlider) {
+      goalIntervalSlider.value = state.goalInterval;
+      updateSliderOutput(goalIntervalSlider);
+    }
+  }
   if (Array.isArray(snapshot.goals)) {
     currentGoals = snapshot.goals.map((goal) => ({ ...goal }));
   }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
-  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(2)} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(2)} — penalty ${currentStepPenalty.toFixed(3)} — delay ${delayLabel}`;
+  const goalInfo =
+    snapshot.config.goalCount && snapshot.config.goalCount > 0
+      ? `goals ${snapshot.config.goalCount} (interval ${snapshot.config.goalInterval || 0})`
+      : 'manual goals';
+  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(
+    2,
+  )} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(
+    2,
+  )} — penalty ${currentStepPenalty.toFixed(3)} (eff ${effectivePenalty.toFixed(3)}) — ${goalInfo} — delay ${delayLabel}`;
   appendLog(snapshot);
   if (snapshot.status === 'done' && snapshot.config) {
     state.rows = snapshot.config.rows;
@@ -392,6 +440,8 @@ function serializeForm(form) {
     episodes: Number(data.get('episodes')),
     seed: Number(data.get('seed')),
     epsilon: Number(data.get('epsilon')),
+    epsilonMin: 0.05,
+    epsilonDecay: 0.998,
     alpha: Number(data.get('alpha')),
     gamma: Number(data.get('gamma')),
     rows: state.rows,
@@ -399,7 +449,12 @@ function serializeForm(form) {
     algorithm: String(data.get('algorithm') || 'montecarlo'),
     stepDelayMs: Number(data.get('stepDelayMs')),
     stepPenalty: Number(data.get('stepPenalty')),
-    goals: state.goals.map((goal) => ({ ...goal })),
+    goalCount: state.goalCount,
+    goalInterval: state.goalInterval,
+    goals:
+      state.goalCount > 0
+        ? generateAutoGoals(state.goalCount).map((goal) => ({ ...goal }))
+        : state.goals.map((goal) => ({ ...goal })),
   };
 }
 
@@ -411,18 +466,18 @@ function attachEventListeners() {
       statusEl.textContent = 'Loading WASM...';
       return;
     }
-  const cfg = serializeForm(form);
-  playbackDelayMs = cfg.stepDelayMs || 0;
-  currentAlgorithm = cfg.algorithm || 'montecarlo';
-  currentGamma = typeof cfg.gamma === 'number' && !Number.isNaN(cfg.gamma) ? cfg.gamma : currentGamma;
-  if (Array.isArray(cfg.goals)) {
-    currentGoals = cfg.goals;
-  }
-  console.log('[form] submitted config', cfg, 'playbackDelay', playbackDelayMs);
-  const config = JSON.stringify(cfg);
-  resetAnimationState();
-  window.tinyrlStartTraining(config);
-  statusEl.textContent = 'Training...';
+    const cfg = serializeForm(form);
+    playbackDelayMs = cfg.stepDelayMs || 0;
+    currentAlgorithm = cfg.algorithm || 'montecarlo';
+    currentGamma = typeof cfg.gamma === 'number' && !Number.isNaN(cfg.gamma) ? cfg.gamma : currentGamma;
+    if (Array.isArray(cfg.goals)) {
+      currentGoals = cfg.goals;
+    }
+    console.log('[form] submitted config', cfg, 'playbackDelay', playbackDelayMs);
+    const config = JSON.stringify(cfg);
+    resetAnimationState();
+    window.tinyrlStartTraining(config);
+    statusEl.textContent = 'Training...';
   });
   stopBtn.addEventListener('click', () => {
     if (wasmReady) {
@@ -441,7 +496,6 @@ function attachEventListeners() {
       draw();
     });
   });
-  canvas.addEventListener('click', handleCanvasClick);
   resizeHandle.addEventListener('mousedown', startResize);
 }
 

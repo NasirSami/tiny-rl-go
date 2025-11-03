@@ -40,18 +40,28 @@ func runTrain(args []string) error {
 	envName := fs.String("env", "gridworld", "environment to train in")
 	episodes := fs.Int("episodes", 1, "number of training episodes")
 	seed := fs.Int64("seed", 0, "deterministic seed (0 for default)")
-	epsilon := fs.Float64("epsilon", 0.1, "exploration rate (0-1)")
-	epsilonMin := fs.Float64("epsilon-min", 0, "minimum exploration rate")
-	epsilonDecay := fs.Float64("epsilon-decay", 1, "per-episode decay multiplier")
-	alpha := fs.Float64("alpha", 0.1, "learning rate (0-1)")
+	epsilon := fs.Float64("epsilon", 0.5, "exploration rate (0-1)")
+	epsilonMin := fs.Float64("epsilon-min", 0.05, "minimum exploration rate")
+	epsilonDecay := fs.Float64("epsilon-decay", 0.998, "per-episode decay multiplier")
+	alpha := fs.Float64("alpha", 0.2, "learning rate (0-1)")
 	gamma := fs.Float64("gamma", 0.9, "discount factor (0-1)")
 	rows := fs.Int("rows", 4, "grid rows")
 	cols := fs.Int("cols", 4, "grid columns")
 	stepDelay := fs.Int("step-delay", 0, "per-step delay in milliseconds")
+	maxSteps := fs.Int("max-steps", 0, "maximum steps per episode (0 uses default)")
 	algorithm := fs.String("algorithm", engine.AlgorithmMonteCarlo, "training algorithm (montecarlo, q-learning, sarsa)")
 	var goals goalListFlag
 	fs.Func("goal", "goal specification row,col,reward (repeatable)", goals.Set)
-	stepPenalty := fs.Float64("step-penalty", 0.01, "per-step penalty (non-negative)")
+	stepPenalty := fs.Float64("step-penalty", 0.02, "per-step penalty (non-negative)")
+	randomStart := fs.Bool("random-start", false, "randomize start position each episode")
+	dumpTrajectory := fs.Bool("dump-trajectory", false, "print first Monte Carlo episode trajectory")
+	goalCount := fs.Int("goal-count", 0, "number of auto-placed goals (0 keeps manual goals)")
+	goalInterval := fs.Int("goal-interval", 20, "episodes before reshuffling auto goals (0 keeps layout)")
+	softmaxTemp := fs.Float64("softmax-temp", 1.0, "initial softmax temperature for Monte Carlo policy")
+	softmaxMinTemp := fs.Float64("softmax-min-temp", 0.1, "minimum softmax temperature during an episode")
+	lambda := fs.Float64("lambda", 0.9, "eligibility trace decay (0-1)")
+	warmupEpisodes := fs.Int("warmup-episodes", 0, "episodes using warmup step penalty (0 disables)")
+	warmupPenalty := fs.Float64("warmup-step-penalty", 0, "step penalty during warmup episodes")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -81,6 +91,9 @@ func runTrain(args []string) error {
 	if *stepDelay < 0 {
 		return fmt.Errorf("step-delay must be non-negative (got %d)", *stepDelay)
 	}
+	if *maxSteps < 0 {
+		return fmt.Errorf("max-steps must be non-negative (got %d)", *maxSteps)
+	}
 	if *algorithm != engine.AlgorithmMonteCarlo {
 		if *algorithm != engine.AlgorithmQLearning && *algorithm != engine.AlgorithmSARSA {
 			return fmt.Errorf("unsupported algorithm %q", *algorithm)
@@ -92,23 +105,59 @@ func runTrain(args []string) error {
 	if *stepPenalty < 0 {
 		return fmt.Errorf("step-penalty must be non-negative (got %.4f)", *stepPenalty)
 	}
+	if *goalCount < 0 {
+		return fmt.Errorf("goal-count must be non-negative (got %d)", *goalCount)
+	}
+	if *goalInterval < 0 {
+		return fmt.Errorf("goal-interval must be non-negative (got %d)", *goalInterval)
+	}
+	if *softmaxTemp <= 0 {
+		return fmt.Errorf("softmax-temp must be positive (got %.2f)", *softmaxTemp)
+	}
+	if *softmaxMinTemp < 0 {
+		return fmt.Errorf("softmax-min-temp must be non-negative (got %.2f)", *softmaxMinTemp)
+	}
+	if *softmaxMinTemp > *softmaxTemp {
+		return fmt.Errorf("softmax-min-temp must be <= softmax-temp")
+	}
+	if *lambda < 0 || *lambda > 1 {
+		return fmt.Errorf("lambda must be between 0 and 1 (got %.2f)", *lambda)
+	}
+	if *warmupEpisodes < 0 {
+		return fmt.Errorf("warmup-episodes must be non-negative (got %d)", *warmupEpisodes)
+	}
+	if *warmupPenalty < 0 {
+		return fmt.Errorf("warmup-step-penalty must be non-negative (got %.4f)", *warmupPenalty)
+	}
 
-	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f epsilonMin=%.2f epsilonDecay=%.3f alpha=%.2f gamma=%.2f rows=%d cols=%d stepDelayMs=%d stepPenalty=%.3f algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *epsilonMin, *epsilonDecay, *alpha, *gamma, *rows, *cols, *stepDelay, *stepPenalty, *algorithm)
+	effectivePenalty := engine.ScaledStepPenalty(*rows, *cols, *stepPenalty)
+
+	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f epsilonMin=%.2f epsilonDecay=%.3f alpha=%.2f gamma=%.2f lambda=%.2f rows=%d cols=%d stepDelayMs=%d maxSteps=%d stepPenalty=%.3f warmupEpisodes=%d warmupPenalty=%.3f effectiveStepPenalty=%.3f goalCount=%d goalInterval=%d softmaxTemp=%.2f softmaxMinTemp=%.2f randomStart=%t dumpTrajectory=%t algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *epsilonMin, *epsilonDecay, *alpha, *gamma, *lambda, *rows, *cols, *stepDelay, *maxSteps, *stepPenalty, *warmupEpisodes, *warmupPenalty, effectivePenalty, *goalCount, *goalInterval, *softmaxTemp, *softmaxMinTemp, *randomStart, *dumpTrajectory, *algorithm)
 
 	cfg := engine.Config{
-		Episodes:     *episodes,
-		Seed:         *seed,
-		Epsilon:      *epsilon,
-		EpsilonMin:   *epsilonMin,
-		EpsilonDecay: *epsilonDecay,
-		Alpha:        *alpha,
-		Gamma:        *gamma,
-		Rows:         *rows,
-		Cols:         *cols,
-		StepDelayMs:  *stepDelay,
-		Algorithm:    *algorithm,
-		Goals:        goals.Goals,
-		StepPenalty:  *stepPenalty,
+		Episodes:              *episodes,
+		Seed:                  *seed,
+		Epsilon:               *epsilon,
+		EpsilonMin:            *epsilonMin,
+		EpsilonDecay:          *epsilonDecay,
+		Alpha:                 *alpha,
+		Gamma:                 *gamma,
+		Rows:                  *rows,
+		Cols:                  *cols,
+		StepDelayMs:           *stepDelay,
+		MaxSteps:              *maxSteps,
+		Algorithm:             *algorithm,
+		Goals:                 goals.Goals,
+		StepPenalty:           *stepPenalty,
+		RandomStart:           *randomStart,
+		DumpTrajectory:        *dumpTrajectory,
+		GoalCount:             *goalCount,
+		GoalInterval:          *goalInterval,
+		SoftmaxTemperature:    *softmaxTemp,
+		SoftmaxMinTemperature: *softmaxMinTemp,
+		Lambda:                *lambda,
+		WarmupEpisodes:        *warmupEpisodes,
+		WarmupStepPenalty:     *warmupPenalty,
 	}
 	trainer := engine.NewTrainer(cfg)
 	ctx := context.Background()

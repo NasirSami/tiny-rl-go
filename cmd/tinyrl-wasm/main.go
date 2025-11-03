@@ -106,17 +106,19 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		}
 	}
 	config := map[string]interface{}{
-		"episodes":    snapshot.Config.Episodes,
-		"seed":        snapshot.Config.Seed,
-		"epsilon":     snapshot.Config.Epsilon,
-		"alpha":       snapshot.Config.Alpha,
-		"gamma":       snapshot.Config.Gamma,
-		"rows":        snapshot.Config.Rows,
-		"cols":        snapshot.Config.Cols,
-		"stepDelayMs": snapshot.Config.StepDelayMs,
-		"algorithm":   snapshot.Config.Algorithm,
-		"goals":       goals,
-		"stepPenalty": snapshot.Config.StepPenalty,
+		"episodes":     snapshot.Config.Episodes,
+		"seed":         snapshot.Config.Seed,
+		"epsilon":      snapshot.Config.Epsilon,
+		"alpha":        snapshot.Config.Alpha,
+		"gamma":        snapshot.Config.Gamma,
+		"rows":         snapshot.Config.Rows,
+		"cols":         snapshot.Config.Cols,
+		"stepDelayMs":  snapshot.Config.StepDelayMs,
+		"algorithm":    snapshot.Config.Algorithm,
+		"goals":        goals,
+		"stepPenalty":  snapshot.Config.StepPenalty,
+		"goalCount":    snapshot.Config.GoalCount,
+		"goalInterval": snapshot.Config.GoalInterval,
 	}
 	payload := map[string]interface{}{
 		"step":              snapshot.Step,
