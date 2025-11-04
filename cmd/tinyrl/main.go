@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -62,6 +64,8 @@ func runTrain(args []string) error {
 	lambda := fs.Float64("lambda", 0.9, "eligibility trace decay (0-1)")
 	warmupEpisodes := fs.Int("warmup-episodes", 0, "episodes using warmup step penalty (0 disables)")
 	warmupPenalty := fs.Float64("warmup-step-penalty", 0, "step penalty during warmup episodes")
+	metricsCSV := fs.String("metrics-csv", "", "write per-episode metrics to CSV at path")
+	runJSON := fs.String("run-json", "", "write final run summary as JSON at path")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -132,6 +136,58 @@ func runTrain(args []string) error {
 
 	effectivePenalty := engine.ScaledStepPenalty(*rows, *cols, *stepPenalty)
 
+	var (
+		metricsFile   *os.File
+		metricsWriter *csv.Writer
+	)
+	if *metricsCSV != "" {
+		file, err := os.Create(*metricsCSV)
+		if err != nil {
+			return fmt.Errorf("create metrics csv: %w", err)
+		}
+		metricsFile = file
+		metricsWriter = csv.NewWriter(file)
+		header := []string{"episode", "steps", "episode_reward", "success", "epsilon", "alpha", "gamma", "rows", "cols", "step_penalty", "algorithm", "seed", "goal_count", "goal_interval"}
+		if err := metricsWriter.Write(header); err != nil {
+			metricsWriter.Flush()
+			metricsFile.Close()
+			return fmt.Errorf("write metrics header: %w", err)
+		}
+		metricsWriter.Flush()
+		if err := metricsWriter.Error(); err != nil {
+			metricsFile.Close()
+			return fmt.Errorf("flush metrics header: %w", err)
+		}
+		defer func() {
+			metricsWriter.Flush()
+			if err := metricsWriter.Error(); err != nil {
+				fmt.Fprintf(os.Stderr, "metrics csv flush error: %v\n", err)
+			}
+			if err := metricsFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "metrics csv close error: %v\n", err)
+			}
+		}()
+	}
+
+	var (
+		runSummaryFile *os.File
+		runSummaryEnc  *json.Encoder
+	)
+	if *runJSON != "" {
+		file, err := os.Create(*runJSON)
+		if err != nil {
+			return fmt.Errorf("create run summary json: %w", err)
+		}
+		runSummaryFile = file
+		runSummaryEnc = json.NewEncoder(file)
+		runSummaryEnc.SetIndent("", "  ")
+		defer func() {
+			if err := runSummaryFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "run summary close error: %v\n", err)
+			}
+		}()
+	}
+
 	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f epsilonMin=%.2f epsilonDecay=%.3f alpha=%.2f gamma=%.2f lambda=%.2f rows=%d cols=%d stepDelayMs=%d maxSteps=%d stepPenalty=%.3f warmupEpisodes=%d warmupPenalty=%.3f effectiveStepPenalty=%.3f goalCount=%d goalInterval=%d softmaxTemp=%.2f softmaxMinTemp=%.2f randomStart=%t dumpTrajectory=%t algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *epsilonMin, *epsilonDecay, *alpha, *gamma, *lambda, *rows, *cols, *stepDelay, *maxSteps, *stepPenalty, *warmupEpisodes, *warmupPenalty, effectivePenalty, *goalCount, *goalInterval, *softmaxTemp, *softmaxMinTemp, *randomStart, *dumpTrajectory, *algorithm)
 
 	cfg := engine.Config{
@@ -166,6 +222,8 @@ func runTrain(args []string) error {
 		cumulativeSteps  int
 		successCount     int
 		valueMap         [][]float64
+		finalConfig      = cfg
+		lastSuccessCount int
 	)
 	for snapshot := range trainer.Run(ctx) {
 		switch snapshot.Status {
@@ -177,11 +235,43 @@ func runTrain(args []string) error {
 			cumulativeSteps = snapshot.TotalSteps
 			successCount = snapshot.SuccessCount
 			valueMap = snapshot.ValueMap
+			finalConfig = snapshot.Config
+			successDelta := 0
+			if snapshot.SuccessCount > lastSuccessCount {
+				successDelta = 1
+			}
+			lastSuccessCount = snapshot.SuccessCount
+			if metricsWriter != nil {
+				record := []string{
+					strconv.Itoa(snapshot.Episode),
+					strconv.Itoa(snapshot.EpisodeSteps),
+					fmt.Sprintf("%.4f", snapshot.EpisodeReward),
+					strconv.Itoa(successDelta),
+					fmt.Sprintf("%.6f", snapshot.Config.Epsilon),
+					fmt.Sprintf("%.6f", snapshot.Config.Alpha),
+					fmt.Sprintf("%.6f", snapshot.Config.Gamma),
+					strconv.Itoa(snapshot.Config.Rows),
+					strconv.Itoa(snapshot.Config.Cols),
+					fmt.Sprintf("%.6f", snapshot.Config.StepPenalty),
+					snapshot.Config.Algorithm,
+					strconv.FormatInt(snapshot.Config.Seed, 10),
+					strconv.Itoa(snapshot.Config.GoalCount),
+					strconv.Itoa(snapshot.Config.GoalInterval),
+				}
+				if err := metricsWriter.Write(record); err != nil {
+					return fmt.Errorf("write metrics row: %w", err)
+				}
+				metricsWriter.Flush()
+				if err := metricsWriter.Error(); err != nil {
+					return fmt.Errorf("flush metrics row: %w", err)
+				}
+			}
 		case engine.StatusDone:
 			cumulativeReward = snapshot.TotalReward
 			cumulativeSteps = snapshot.TotalSteps
 			successCount = snapshot.SuccessCount
 			valueMap = snapshot.ValueMap
+			finalConfig = snapshot.Config
 		case engine.StatusCancelled:
 			fmt.Println("training cancelled")
 			return nil
@@ -193,6 +283,24 @@ func runTrain(args []string) error {
 	successRate := float64(successCount) / float64(*episodes)
 	fmt.Printf("summary: avg_reward=%.2f avg_steps=%.2f success_rate=%.2f\n", avgReward, avgSteps, successRate)
 	printValueMap(valueMap)
+	if runSummaryEnc != nil {
+		payload := struct {
+			Config  engine.Config `json:"config"`
+			Summary struct {
+				AvgReward   float64 `json:"avg_reward"`
+				AvgSteps    float64 `json:"avg_steps"`
+				SuccessRate float64 `json:"success_rate"`
+			} `json:"summary"`
+		}{
+			Config: finalConfig,
+		}
+		payload.Summary.AvgReward = avgReward
+		payload.Summary.AvgSteps = avgSteps
+		payload.Summary.SuccessRate = successRate
+		if err := runSummaryEnc.Encode(payload); err != nil {
+			return fmt.Errorf("write run summary json: %w", err)
+		}
+	}
 
 	return nil
 }

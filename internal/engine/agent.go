@@ -80,9 +80,11 @@ func (a *epsilonGreedyAgent) greedyValueAction(env *gridworldEnv) int {
 	var candidates []candidate
 	for action := 0; action < 4; action++ {
 		row, col := env.nextPosition(action)
-		distance := env.potential(row, col)
-		band := distanceBand(distance)
-		score := a.values.get(row, col, band)
+		feature := 0
+		if a.values != nil && a.values.mapper != nil {
+			feature = a.values.mapper.Index(env, row, col)
+		}
+		score := a.values.get(row, col, feature)
 		if score > bestScore {
 			bestScore = score
 			candidates = candidates[:0]
@@ -140,9 +142,11 @@ func (a *epsilonGreedyAgent) softmaxValueAction(env *gridworldEnv, temperature f
 	var maxScore float64 = math.Inf(-1)
 	for action := 0; action < 4; action++ {
 		row, col := env.nextPosition(action)
-		distance := env.potential(row, col)
-		band := distanceBand(distance)
-		score := a.values.get(row, col, band) / temperature
+		feature := 0
+		if a.values.mapper != nil {
+			feature = a.values.mapper.Index(env, row, col)
+		}
+		score := a.values.get(row, col, feature) / temperature
 		scores[action] = score
 		if score > maxScore {
 			maxScore = score

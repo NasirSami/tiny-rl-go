@@ -88,6 +88,7 @@ type Config struct {
 	Lambda                float64
 	WarmupEpisodes        int
 	WarmupStepPenalty     float64
+	FeatureMapper         FeatureMapper
 }
 
 type Position struct {
@@ -200,7 +201,9 @@ func NewTrainer(cfg Config) *Trainer {
 	}
 	rng := rand.New(rand.NewSource(seed))
 	sanitizedGoals := sanitizeGoals(cfg.Goals, cfg.Rows, cfg.Cols)
-	if len(sanitizedGoals) == 0 {
+	if cfg.GoalCount > 0 {
+		sanitizedGoals = autoPlaceGoals(cfg.Rows, cfg.Cols, cfg.GoalCount)
+	} else if len(sanitizedGoals) == 0 {
 		reward := maxFloat(1, float64(cfg.Rows+cfg.Cols-2)/2.5)
 		sanitizedGoals = []Goal{{Row: 0, Col: cfg.Cols - 1, Reward: reward}}
 	}
@@ -212,11 +215,13 @@ func NewTrainer(cfg Config) *Trainer {
 		values  *valueTable
 		qvalues *qTable
 	)
-	if cfg.Algorithm == AlgorithmMonteCarlo {
-		values = newValueTable(env.rows, env.cols, cfg.Alpha)
-	} else {
-		qvalues = newQTable(env.rows, env.cols, 4)
+
+	mapper := cfg.FeatureMapper
+	if mapper == nil {
+		mapper = DistanceBands3Mapper{}
 	}
+
+	qvalues = newQTable(env.rows, env.cols, 4)
 	agent := newEpsilonGreedyAgent(rng, values, qvalues, cfg.Epsilon)
 	return &Trainer{
 		cfg:             cfg,
@@ -243,6 +248,37 @@ func sanitizeGoals(goals []Goal, rows, cols int) []Goal {
 		result = append(result, Goal{Row: row, Col: col, Reward: g.Reward})
 	}
 	return result
+}
+
+func autoPlaceGoals(rows, cols, count int) []Goal {
+	if rows <= 0 || cols <= 0 {
+		return nil
+	}
+	if count <= 0 {
+		reward := maxFloat(1, float64(rows+cols-2)/2.5)
+		return []Goal{{Row: 0, Col: cols - 1, Reward: reward}}
+	}
+	reward := maxFloat(1, float64(rows+cols-2)/2.5)
+	total := rows * cols
+	if count > total {
+		count = total
+	}
+	interval := total / count
+	if interval == 0 {
+		interval = 1
+	}
+	goals := make([]Goal, 0, count)
+	index := 0
+	for i := 0; i < total && len(goals) < count; i++ {
+		if i%interval != 0 {
+			continue
+		}
+		row := i / cols
+		col := i % cols
+		goals = append(goals, Goal{Row: row, Col: col, Reward: reward})
+		index++
+	}
+	return goals
 }
 
 func (t *Trainer) Run(ctx context.Context) <-chan Snapshot {
@@ -278,20 +314,27 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		t.applyWarmupPenalty(episode)
 		t.agent.resetVisits()
 	}
+	if t.cfg.GoalCount > 0 && t.cfg.GoalInterval > 0 {
+		shouldShuffle := episode == 1 || (episode-1)%t.cfg.GoalInterval == 0
+		if shouldShuffle {
+			newGoals := autoPlaceGoals(t.env.rows, t.env.cols, t.cfg.GoalCount)
+			t.env.setGoals(newGoals)
+			t.cfg.Goals = cloneGoals(newGoals)
+		}
+	}
 	t.env.reset()
 	if t.cfg.RandomStart {
 		t.applyRandomStart()
 	}
 	state := position{row: t.env.currRow, col: t.env.currCol}
 	action := t.agent.act(t.env)
-	var states []position
-	var rewards []float64
-	var bands []int
-	if t.values != nil {
-		states = append(states, state)
-		initialBand := distanceBand(t.env.potential(state.row, state.col))
-		bands = append(bands, initialBand)
-		rewards = make([]float64, 0, t.env.maxSteps)
+	var mcStates []position
+	var mcActions []int
+	var mcRewards []float64
+	if t.cfg.Algorithm == AlgorithmMonteCarlo {
+		mcStates = append(mcStates, state)
+		mcActions = append(mcActions, action)
+		mcRewards = make([]float64, 0, t.env.maxSteps)
 	}
 	visits := make(map[position]int, t.env.rows*t.env.cols)
 	visits[state]++
@@ -322,20 +365,21 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 		t.step++
 		lastReward = reward
 		var nextAction int
-		if t.qvalues != nil {
-			if t.cfg.Algorithm == AlgorithmQLearning {
-				t.updateQLearning(state, action, reward, nextState, done)
-			} else if t.cfg.Algorithm == AlgorithmSARSA {
-				if !done {
-					nextAction = t.agent.act(t.env)
-				}
-				t.updateSARSA(state, action, reward, nextState, nextAction, done)
+		switch t.cfg.Algorithm {
+		case AlgorithmQLearning:
+			t.updateQLearning(state, action, reward, nextState, done)
+		case AlgorithmSARSA:
+			if !done {
+				nextAction = t.agent.act(t.env)
 			}
-		} else {
-			rewards = append(rewards, reward)
-			states = append(states, nextState)
-			nextBand := distanceBand(newDistance)
-			bands = append(bands, nextBand)
+			t.updateSARSA(state, action, reward, nextState, nextAction, done)
+		case AlgorithmMonteCarlo:
+			mcRewards = append(mcRewards, reward)
+			if !done {
+				nextAction = t.agent.act(t.env)
+				mcStates = append(mcStates, nextState)
+				mcActions = append(mcActions, nextAction)
+			}
 		}
 		visits[nextState]++
 		out <- t.snapshot(StatusRunning, episode, steps, episodeReward, reward)
@@ -351,20 +395,23 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 			break
 		}
 		state = nextState
-		if t.qvalues != nil {
-			if t.cfg.Algorithm == AlgorithmQLearning {
-				action = t.agent.act(t.env)
-			} else {
-				action = nextAction
-			}
-		} else {
+		switch t.cfg.Algorithm {
+		case AlgorithmQLearning:
+			action = t.agent.act(t.env)
+		case AlgorithmSARSA:
+			action = nextAction
+		case AlgorithmMonteCarlo:
+			action = nextAction
+		default:
 			action = t.agent.act(t.env)
 		}
 	}
 	if goalReached {
 		t.successCount++
 	}
-	t.updateMonteCarloValues(states, rewards, bands)
+	if t.cfg.Algorithm == AlgorithmMonteCarlo {
+		t.updateMonteCarloQ(mcStates, mcActions, mcRewards)
+	}
 	t.totalReward += episodeReward
 	t.totalSteps += steps
 	t.episodesCompleted++
@@ -372,32 +419,38 @@ func (t *Trainer) runEpisode(ctx context.Context, episode int, out chan<- Snapsh
 	out <- t.snapshot(StatusEpisodeComplete, episode, steps, episodeReward, lastReward)
 }
 
-func (t *Trainer) updateMonteCarloValues(states []position, rewards []float64, bands []int) {
-	if t.values == nil || len(states) == 0 || len(rewards) == 0 {
+func (t *Trainer) updateMonteCarloQ(states []position, actions []int, rewards []float64) {
+	if t.qvalues == nil {
 		return
 	}
-	if len(bands) != len(states) {
+	if len(states) == 0 || len(actions) == 0 || len(rewards) == 0 {
 		return
 	}
-	type key struct {
-		row  int
-		col  int
-		band int
+	if len(states) != len(actions) {
+		return
 	}
-	seen := make(map[key]bool, len(states))
+	if len(rewards) != len(actions) {
+		return
+	}
+	type visitKey struct {
+		row    int
+		col    int
+		action int
+	}
+	seen := make(map[visitKey]bool, len(actions))
 	G := 0.0
 	for i := len(rewards) - 1; i >= 0; i-- {
 		G = rewards[i] + t.cfg.Gamma*G
 		state := states[i]
-		band := bands[i]
-		k := key{row: state.row, col: state.col, band: band}
-		if seen[k] {
+		action := actions[i]
+		key := visitKey{row: state.row, col: state.col, action: action}
+		if seen[key] {
 			continue
 		}
-		seen[k] = true
-		current := t.values.get(state.row, state.col, band)
-		delta := t.cfg.Alpha * (G - current)
-		t.values.add(state.row, state.col, band, delta)
+		seen[key] = true
+		current := t.qvalues.get(state.row, state.col, action)
+		updated := current + t.cfg.Alpha*(G-current)
+		t.qvalues.set(state.row, state.col, action, updated)
 	}
 }
 

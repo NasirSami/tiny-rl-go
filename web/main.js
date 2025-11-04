@@ -11,6 +11,9 @@ let playbackDelayMs = DEFAULT_PLAYBACK_DELAY;
 let currentAlgorithm = 'montecarlo';
 let currentGamma = 0.9;
 let currentGoals = [];
+let recentRewards = [];
+let recentSuccessFlags = [];
+let lastSuccessCount = 0;
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
@@ -116,15 +119,13 @@ function handleSliderChange(name, value) {
       currentStepPenalty = value;
       break;
     case 'goalCount':
-  state.goalCount = Math.max(0, Math.round(value));
-  if (state.goalCount > 0) {
-    state.goals = generateAutoGoals(state.goalCount);
-  } else if (state.goals.length === 0) {
-    state.goals = [{ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD }];
-  }
-  resetAnimationState();
-  draw();
-  break;
+      state.goalCount = Math.max(0, Math.round(value));
+      if (state.goalCount === 0 && state.goals.length === 0) {
+        state.goals = [{ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD }];
+      }
+      resetAnimationState();
+      draw();
+      break;
     case 'goalInterval':
       state.goalInterval = Math.max(0, Math.round(value));
       break;
@@ -135,33 +136,7 @@ function handleSliderChange(name, value) {
 
 function ensureGoalsWithinBounds() {
   state.goals = state.goals.filter((goal) => goal.row >= 0 && goal.row < state.rows && goal.col >= 0 && goal.col < state.cols);
-  if (state.goalCount > 0 && state.goals.length < state.goalCount) {
-    state.goals = generateAutoGoals(state.goalCount);
-  }
   currentGoals = state.goals.map((goal) => ({ ...goal }));
-}
-
-function generateAutoGoals(count) {
-  const goals = [];
-  const used = new Set();
-  const totalCells = state.rows * state.cols;
-  const offset = Math.max(1, Math.floor(totalCells / Math.max(count, 1)));
-  for (let i = 0; i < count; i++) {
-    const idx = Math.min(totalCells - 1, i * offset);
-    const row = Math.floor(idx / state.cols);
-    const col = idx % state.cols;
-    const key = `${row},${col}`;
-    if (used.has(key)) {
-      continue;
-    }
-    used.add(key);
-    goals.push({ row, col, reward: DEFAULT_GOAL_REWARD });
-  }
-  if (goals.length === 0) {
-    goals.push({ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD });
-  }
-  currentGoals = goals.map((goal) => ({ ...goal }));
-  return goals;
 }
 
 function startResize(event) {
@@ -238,6 +213,7 @@ function processSnapshotQueue() {
     }
     currentTrail.push({ row: snapshot.position.row, col: snapshot.position.col });
   } else if (snapshot.status === 'episode_complete') {
+    updateRollingStats(snapshot);
     currentTrail = [];
   }
   if (snapshotQueue.length > 0) {
@@ -293,11 +269,12 @@ function updateView(snapshot) {
     snapshot.config.goalCount && snapshot.config.goalCount > 0
       ? `goals ${snapshot.config.goalCount} (interval ${snapshot.config.goalInterval || 0})`
       : 'manual goals';
+  const rolling = formatRollingStats();
   metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(
     2,
   )} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(
     2,
-  )} — penalty ${currentStepPenalty.toFixed(3)} (eff ${effectivePenalty.toFixed(3)}) — ${goalInfo} — delay ${delayLabel}`;
+  )} — penalty ${currentStepPenalty.toFixed(3)} (eff ${effectivePenalty.toFixed(3)}) — ${goalInfo} — delay ${delayLabel}${rolling}`;
   appendLog(snapshot);
   if (snapshot.status === 'done' && snapshot.config) {
     state.rows = snapshot.config.rows;
@@ -310,6 +287,53 @@ function updateView(snapshot) {
     updateCanvasSize();
   }
   draw();
+}
+
+function updateRollingStats(snapshot) {
+  recentRewards.push(snapshot.episodeReward);
+  if (recentRewards.length > 50) {
+    recentRewards.shift();
+  }
+  const successAchieved = snapshot.successCount > lastSuccessCount ? 1 : 0;
+  recentSuccessFlags.push(successAchieved);
+  if (recentSuccessFlags.length > 50) {
+    recentSuccessFlags.shift();
+  }
+  lastSuccessCount = snapshot.successCount;
+}
+
+function averageOfWindow(values, windowSize) {
+  if (!values.length) return null;
+  const count = Math.min(values.length, windowSize);
+  let total = 0;
+  for (let i = values.length - count; i < values.length; i++) {
+    total += values[i];
+  }
+  return total / count;
+}
+
+function formatRollingStats() {
+  if (!recentRewards.length) {
+    return '';
+  }
+  const reward10 = averageOfWindow(recentRewards, 10);
+  const reward50 = averageOfWindow(recentRewards, 50);
+  const success10 = averageOfWindow(recentSuccessFlags, 10);
+  const success50 = averageOfWindow(recentSuccessFlags, 50);
+  const parts = [];
+  if (reward10 !== null) {
+    parts.push(` reward₁₀ avg ${reward10.toFixed(2)}`);
+  }
+  if (reward50 !== null) {
+    parts.push(` reward₅₀ avg ${reward50.toFixed(2)}`);
+  }
+  if (success10 !== null) {
+    parts.push(` success₁₀ ${success10.toFixed(2)}`);
+  }
+  if (success50 !== null) {
+    parts.push(` success₅₀ ${success50.toFixed(2)}`);
+  }
+  return parts.length ? ` —${parts.join(' —')}` : '';
 }
 
 function appendLog(snapshot) {
@@ -451,10 +475,7 @@ function serializeForm(form) {
     stepPenalty: Number(data.get('stepPenalty')),
     goalCount: state.goalCount,
     goalInterval: state.goalInterval,
-    goals:
-      state.goalCount > 0
-        ? generateAutoGoals(state.goalCount).map((goal) => ({ ...goal }))
-        : state.goals.map((goal) => ({ ...goal })),
+    goals: state.goalCount > 0 ? [] : state.goals.map((goal) => ({ ...goal })),
   };
 }
 
