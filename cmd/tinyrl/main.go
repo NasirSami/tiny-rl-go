@@ -59,6 +59,10 @@ func runTrain(args []string) error {
 	dumpTrajectory := fs.Bool("dump-trajectory", false, "print first Monte Carlo episode trajectory")
 	goalCount := fs.Int("goal-count", 0, "number of auto-placed goals (0 keeps manual goals)")
 	goalInterval := fs.Int("goal-interval", 20, "episodes before reshuffling auto goals (0 keeps layout)")
+	var wallPositions positionListFlag
+	fs.Func("wall", "wall tile at row,col (repeatable)", wallPositions.Set)
+	var slipTiles slipListFlag
+	fs.Func("slip", "slip tile row,col,probability (repeatable)", slipTiles.Set)
 	softmaxTemp := fs.Float64("softmax-temp", 1.0, "initial softmax temperature for Monte Carlo policy")
 	softmaxMinTemp := fs.Float64("softmax-min-temp", 0.1, "minimum softmax temperature during an episode")
 	lambda := fs.Float64("lambda", 0.9, "eligibility trace decay (0-1)")
@@ -214,6 +218,8 @@ func runTrain(args []string) error {
 		Lambda:                *lambda,
 		WarmupEpisodes:        *warmupEpisodes,
 		WarmupStepPenalty:     *warmupPenalty,
+		Walls:                 wallPositions.Positions,
+		Slips:                 slipTiles.Slips,
 	}
 	trainer := engine.NewTrainer(cfg)
 	ctx := context.Background()
@@ -344,5 +350,65 @@ func (g *goalListFlag) Set(value string) error {
 		return fmt.Errorf("invalid goal reward: %w", err)
 	}
 	g.Goals = append(g.Goals, engine.Goal{Row: row, Col: col, Reward: reward})
+	return nil
+}
+
+type positionListFlag struct {
+	Positions []engine.Position
+}
+
+func (p *positionListFlag) String() string {
+	return fmt.Sprintf("%v", p.Positions)
+}
+
+func (p *positionListFlag) Set(value string) error {
+	parts := strings.Split(value, ",")
+	if len(parts) != 2 {
+		return fmt.Errorf("wall must be in row,col format")
+	}
+	row, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return fmt.Errorf("invalid wall row: %w", err)
+	}
+	col, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return fmt.Errorf("invalid wall col: %w", err)
+	}
+	p.Positions = append(p.Positions, engine.Position{Row: row, Col: col})
+	return nil
+}
+
+type slipListFlag struct {
+	Slips []engine.SlipTile
+}
+
+func (s *slipListFlag) String() string {
+	return fmt.Sprintf("%v", s.Slips)
+}
+
+func (s *slipListFlag) Set(value string) error {
+	parts := strings.Split(value, ",")
+	if len(parts) != 3 {
+		return fmt.Errorf("slip must be in row,col,probability format")
+	}
+	row, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return fmt.Errorf("invalid slip row: %w", err)
+	}
+	col, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return fmt.Errorf("invalid slip col: %w", err)
+	}
+	prob, err := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
+	if err != nil {
+		return fmt.Errorf("invalid slip probability: %w", err)
+	}
+	if prob < 0 {
+		prob = 0
+	}
+	if prob > 1 {
+		prob = 1
+	}
+	s.Slips = append(s.Slips, engine.SlipTile{Row: row, Col: col, Probability: prob})
 	return nil
 }

@@ -105,6 +105,21 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 			"reward": goal.Reward,
 		}
 	}
+	walls := make([]interface{}, len(snapshot.Walls))
+	for i, wall := range snapshot.Walls {
+		walls[i] = map[string]interface{}{
+			"row": wall.Row,
+			"col": wall.Col,
+		}
+	}
+	slips := make([]interface{}, len(snapshot.Slips))
+	for i, slip := range snapshot.Slips {
+		slips[i] = map[string]interface{}{
+			"row":         slip.Row,
+			"col":         slip.Col,
+			"probability": slip.Probability,
+		}
+	}
 	config := map[string]interface{}{
 		"episodes":     snapshot.Config.Episodes,
 		"seed":         snapshot.Config.Seed,
@@ -119,6 +134,8 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		"stepPenalty":  snapshot.Config.StepPenalty,
 		"goalCount":    snapshot.Config.GoalCount,
 		"goalInterval": snapshot.Config.GoalInterval,
+		"walls":        walls,
+		"slips":        slips,
 	}
 	payload := map[string]interface{}{
 		"step":              snapshot.Step,
@@ -129,6 +146,8 @@ func snapshotToJS(snapshot engine.Snapshot) js.Value {
 		"position":          position,
 		"valueMap":          valueMap,
 		"goals":             goals,
+		"walls":             walls,
+		"slips":             slips,
 		"successCount":      snapshot.SuccessCount,
 		"episodesCompleted": snapshot.EpisodesCompleted,
 		"totalReward":       snapshot.TotalReward,

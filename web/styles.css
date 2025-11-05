@@ -177,6 +177,56 @@ button:hover {
   background: #198754;
 }
 
+.obstacle-group {
+  margin-top: 12px;
+}
+
+.obstacle-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.obstacle-controls > div {
+  flex: 1 1 200px;
+}
+
+.obstacle-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.obstacle-row input {
+  width: 70px;
+  padding: 4px;
+}
+
+.obstacle-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.obstacle-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.obstacle-list button {
+  border: none;
+  background: none;
+  color: #d63384;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
 .metrics {
   background: #fff;
   border-radius: 12px;

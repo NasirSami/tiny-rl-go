@@ -48,3 +48,9 @@ Goal: learn single-agent and multi-agent systems by building everything yourself
   ```bash
   go run ./cmd/tinyrl train --algorithm montecarlo --step-penalty 0.02
   ```
+- Add walls and slip tiles:
+  ```bash
+  go run ./cmd/tinyrl train \
+    --algorithm q-learning --episodes 300 --seed 7 \
+    --wall 1,1 --wall 2,2 --slip 1,2,0.2
+  ```

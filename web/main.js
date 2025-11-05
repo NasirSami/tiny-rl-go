@@ -11,6 +11,8 @@ let playbackDelayMs = DEFAULT_PLAYBACK_DELAY;
 let currentAlgorithm = 'montecarlo';
 let currentGamma = 0.9;
 let currentGoals = [];
+let currentWalls = [];
+let currentSlips = [];
 let recentRewards = [];
 let recentSuccessFlags = [];
 let lastSuccessCount = 0;
@@ -27,6 +29,15 @@ const colSlider = form.querySelector('input[name="cols"]');
 const goalCountSlider = form.querySelector('input[name="goalCount"]');
 const goalIntervalSlider = form.querySelector('input[name="goalInterval"]');
 const sliderInputs = form.querySelectorAll('input[type="range"][data-output-target]');
+const wallRowInput = document.getElementById('wallRow');
+const wallColInput = document.getElementById('wallCol');
+const addWallBtn = document.getElementById('addWallBtn');
+const wallList = document.getElementById('wallList');
+const slipRowInput = document.getElementById('slipRow');
+const slipColInput = document.getElementById('slipCol');
+const slipProbInput = document.getElementById('slipProb');
+const addSlipBtn = document.getElementById('addSlipBtn');
+const slipList = document.getElementById('slipList');
 
 const CELL_SIZE = 24;
 const MIN_ROWS = 1;
@@ -39,6 +50,8 @@ const state = {
   rows: Number(rowSlider.value),
   cols: Number(colSlider.value),
   goals: [],
+  walls: [],
+  slips: [],
   goalCount: Number(goalCountSlider.value),
   goalInterval: Number(goalIntervalSlider.value),
 };
@@ -94,6 +107,7 @@ function initializeSliders() {
     });
   });
   syncSlidersFromState();
+  renderObstacleLists();
 }
 
 function handleSliderChange(name, value) {
@@ -137,6 +151,11 @@ function handleSliderChange(name, value) {
 function ensureGoalsWithinBounds() {
   state.goals = state.goals.filter((goal) => goal.row >= 0 && goal.row < state.rows && goal.col >= 0 && goal.col < state.cols);
   currentGoals = state.goals.map((goal) => ({ ...goal }));
+  state.walls = state.walls.filter((wall) => wall.row >= 0 && wall.row < state.rows && wall.col >= 0 && wall.col < state.cols);
+  currentWalls = state.walls.map((wall) => ({ ...wall }));
+  state.slips = state.slips.filter((slip) => slip.row >= 0 && slip.row < state.rows && slip.col >= 0 && slip.col < state.cols);
+  currentSlips = state.slips.map((slip) => ({ ...slip }));
+  renderObstacleLists();
 }
 
 function startResize(event) {
@@ -263,6 +282,14 @@ function updateView(snapshot) {
   if (Array.isArray(snapshot.goals)) {
     currentGoals = snapshot.goals.map((goal) => ({ ...goal }));
   }
+  if (Array.isArray(snapshot.walls)) {
+    currentWalls = snapshot.walls.map((wall) => ({ ...wall }));
+    state.walls = currentWalls.map((wall) => ({ ...wall }));
+  }
+  if (Array.isArray(snapshot.slips)) {
+    currentSlips = snapshot.slips.map((slip) => ({ ...slip }));
+    state.slips = currentSlips.map((slip) => ({ ...slip }));
+  }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
   const goalInfo =
@@ -281,6 +308,12 @@ function updateView(snapshot) {
     state.cols = snapshot.config.cols;
     if (Array.isArray(snapshot.config.goals)) {
       state.goals = snapshot.config.goals.map((goal) => ({ ...goal }));
+    }
+    if (Array.isArray(snapshot.config.walls)) {
+      state.walls = snapshot.config.walls.map((wall) => ({ ...wall }));
+    }
+    if (Array.isArray(snapshot.config.slips)) {
+      state.slips = snapshot.config.slips.map((slip) => ({ ...slip }));
     }
     ensureGoalsWithinBounds();
     syncSlidersFromState();
@@ -349,6 +382,46 @@ function appendLog(snapshot) {
   }
 }
 
+function renderObstacleLists() {
+  if (wallList) {
+    wallList.innerHTML = '';
+    state.walls.forEach((wall, idx) => {
+      const item = document.createElement('li');
+      item.textContent = `(${wall.row}, ${wall.col})`;
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'remove';
+      removeBtn.addEventListener('click', () => {
+        state.walls.splice(idx, 1);
+        currentWalls = state.walls.map((w) => ({ ...w }));
+        renderObstacleLists();
+        draw();
+      });
+      item.appendChild(removeBtn);
+      wallList.appendChild(item);
+    });
+  }
+  if (slipList) {
+    slipList.innerHTML = '';
+    state.slips.forEach((slip, idx) => {
+      const item = document.createElement('li');
+      const probLabel = typeof slip.probability === 'number' ? slip.probability.toFixed(2) : '0.00';
+      item.textContent = `(${slip.row}, ${slip.col}) p=${probLabel}`;
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'remove';
+      removeBtn.addEventListener('click', () => {
+        state.slips.splice(idx, 1);
+        currentSlips = state.slips.map((s) => ({ ...s }));
+        renderObstacleLists();
+        draw();
+      });
+      item.appendChild(removeBtn);
+      slipList.appendChild(item);
+    });
+  }
+}
+
 function formatStatus(snapshot) {
   switch (snapshot.status) {
     case 'running':
@@ -398,6 +471,8 @@ function drawGrid(snapshot) {
   }
   const start = { row: rows - 1, col: 0 };
   drawCell(start, cellWidth, cellHeight, '#0d6efd');
+  drawWalls(cellWidth, cellHeight);
+  drawSlipTiles(cellWidth, cellHeight);
   drawGoals(cellWidth, cellHeight);
   drawTrail(cellWidth, cellHeight);
   drawCell(snapshot.position, cellWidth, cellHeight, '#d63384');
@@ -425,6 +500,26 @@ function drawGoals(cellWidth, cellHeight) {
   currentGoals.forEach((goal) => {
     ctx.fillStyle = '#198754';
     ctx.fillRect(goal.col * cellWidth + 4, goal.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
+  });
+}
+
+function drawWalls(cellWidth, cellHeight) {
+  if (!currentWalls || currentWalls.length === 0) {
+    return;
+  }
+  currentWalls.forEach((wall) => {
+    ctx.fillStyle = '#495057';
+    ctx.fillRect(wall.col * cellWidth + 2, wall.row * cellHeight + 2, cellWidth - 4, cellHeight - 4);
+  });
+}
+
+function drawSlipTiles(cellWidth, cellHeight) {
+  if (!currentSlips || currentSlips.length === 0) {
+    return;
+  }
+  currentSlips.forEach((slip) => {
+    ctx.fillStyle = 'rgba(253, 126, 20, 0.6)';
+    ctx.fillRect(slip.col * cellWidth + 4, slip.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
   });
 }
 
@@ -476,6 +571,8 @@ function serializeForm(form) {
     goalCount: state.goalCount,
     goalInterval: state.goalInterval,
     goals: state.goalCount > 0 ? [] : state.goals.map((goal) => ({ ...goal })),
+    walls: state.walls.map((wall) => ({ ...wall })),
+    slips: state.slips.map((slip) => ({ ...slip })),
   };
 }
 
@@ -518,6 +615,33 @@ function attachEventListeners() {
     });
   });
   resizeHandle.addEventListener('mousedown', startResize);
+  if (addWallBtn) {
+    addWallBtn.addEventListener('click', () => {
+      const row = Number(wallRowInput.value);
+      const col = Number(wallColInput.value);
+      if (Number.isNaN(row) || Number.isNaN(col)) {
+        return;
+      }
+      state.walls.push({ row, col });
+      ensureGoalsWithinBounds();
+      draw();
+    });
+  }
+  if (addSlipBtn) {
+    addSlipBtn.addEventListener('click', () => {
+      const row = Number(slipRowInput.value);
+      const col = Number(slipColInput.value);
+      let probability = Number(slipProbInput.value);
+      if (Number.isNaN(row) || Number.isNaN(col) || Number.isNaN(probability)) {
+        return;
+      }
+      if (probability < 0) probability = 0;
+      if (probability > 1) probability = 1;
+      state.slips.push({ row, col, probability });
+      ensureGoalsWithinBounds();
+      draw();
+    });
+  }
 }
 
 function resetAnimationState() {
@@ -526,6 +650,8 @@ function resetAnimationState() {
   currentTrail = [];
   lastEpisodeId = 0;
   currentGoals = state.goals.map((goal) => ({ ...goal }));
+  currentWalls = state.walls.map((wall) => ({ ...wall }));
+  currentSlips = state.slips.map((slip) => ({ ...slip }));
 }
 
 (async function init() {

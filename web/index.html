@@ -108,6 +108,31 @@
               <span class="slider-output" id="goalIntervalOutput">0</span>
             </div>
           </label>
+          <details class="slider-label obstacle-group">
+            <summary class="slider-title">Obstacles</summary>
+            <div class="slider-help">Maintain walls and slip tiles.</div>
+            <div class="obstacle-controls">
+              <div>
+                <strong>Walls</strong>
+                <div class="obstacle-row">
+                  <input type="number" id="wallRow" min="0" value="0" />
+                  <input type="number" id="wallCol" min="0" value="0" />
+                  <button type="button" id="addWallBtn">Add Wall</button>
+                </div>
+                <ul id="wallList" class="obstacle-list"></ul>
+              </div>
+              <div>
+                <strong>Slip Tiles</strong>
+                <div class="obstacle-row">
+                  <input type="number" id="slipRow" min="0" value="0" />
+                  <input type="number" id="slipCol" min="0" value="0" />
+                  <input type="number" id="slipProb" min="0" max="1" step="0.05" value="0.5" />
+                  <button type="button" id="addSlipBtn">Add Slip</button>
+                </div>
+                <ul id="slipList" class="obstacle-list"></ul>
+              </div>
+            </div>
+          </details>
           <div class="buttons">
             <button type="submit">Start Training</button>
             <button type="button" id="stopBtn">Stop</button>

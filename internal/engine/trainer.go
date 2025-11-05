@@ -89,11 +89,19 @@ type Config struct {
 	WarmupEpisodes        int
 	WarmupStepPenalty     float64
 	FeatureMapper         FeatureMapper
+	Walls                 []Position
+	Slips                 []SlipTile
 }
 
 type Position struct {
 	Row int
 	Col int
+}
+
+type SlipTile struct {
+	Row         int
+	Col         int
+	Probability float64
 }
 
 type Snapshot struct {
@@ -105,6 +113,8 @@ type Snapshot struct {
 	Position          Position
 	ValueMap          [][]float64
 	Goals             []Goal
+	Walls             []Position
+	Slips             []SlipTile
 	SuccessCount      int
 	EpisodesCompleted int
 	TotalReward       float64
@@ -222,6 +232,13 @@ func NewTrainer(cfg Config) *Trainer {
 	}
 
 	qvalues = newQTable(env.rows, env.cols, 4)
+	env.setRandomSource(rng)
+	for _, wall := range cfg.Walls {
+		env.setWall(wall.Row, wall.Col)
+	}
+	for _, slip := range cfg.Slips {
+		env.setSlipTile(slip.Row, slip.Col, slip.Probability)
+	}
 	agent := newEpsilonGreedyAgent(rng, values, qvalues, cfg.Epsilon)
 	return &Trainer{
 		cfg:             cfg,
@@ -543,6 +560,8 @@ func (t *Trainer) snapshot(status string, episode, episodeSteps int, episodeRewa
 		Position:          Position{Row: t.env.currRow, Col: t.env.currCol},
 		ValueMap:          valueMap,
 		Goals:             cloneGoals(t.env.goals),
+		Walls:             clonePositions(t.env.wallPositions()),
+		Slips:             cloneSlips(t.env.slipTiles()),
 		SuccessCount:      t.successCount,
 		EpisodesCompleted: t.episodesCompleted,
 		TotalReward:       t.totalReward,
@@ -559,4 +578,22 @@ func cloneGoals(goals []Goal) []Goal {
 	copyGoals := make([]Goal, len(goals))
 	copy(copyGoals, goals)
 	return copyGoals
+}
+
+func clonePositions(src []Position) []Position {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]Position, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func cloneSlips(src []SlipTile) []SlipTile {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]SlipTile, len(src))
+	copy(dst, src)
+	return dst
 }

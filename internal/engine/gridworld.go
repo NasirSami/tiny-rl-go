@@ -1,5 +1,7 @@
 package engine
 
+import "math/rand"
+
 type gridworldEnv struct {
 	rows, cols   int
 	startRow     int
@@ -11,6 +13,21 @@ type gridworldEnv struct {
 	goals        []Goal
 	initialGoals []Goal
 	stepPenalty  float64
+	tiles        map[position]tile
+	rng          *rand.Rand
+}
+
+type tileKind int
+
+const (
+	tileEmpty tileKind = iota
+	tileWall
+	tileSlip
+)
+
+type tile struct {
+	kind     tileKind
+	slipProb float64
 }
 
 const timeoutPenaltyMultiplier = 5.0
@@ -51,6 +68,7 @@ func newGridworldEnv(rows, cols int, goals []Goal, stepPenalty float64, override
 		goals:        cloneGoalSlice(goals),
 		initialGoals: initial,
 		stepPenalty:  stepPenalty,
+		tiles:        make(map[position]tile),
 	}
 }
 
@@ -73,11 +91,89 @@ func (g *gridworldEnv) setStepPenalty(p float64) {
 	g.stepPenalty = p
 }
 
+func (g *gridworldEnv) setRandomSource(r *rand.Rand) {
+	g.rng = r
+}
+
+func (g *gridworldEnv) setWall(row, col int) {
+	if row < 0 || row >= g.rows || col < 0 || col >= g.cols {
+		return
+	}
+	if g.tiles == nil {
+		g.tiles = make(map[position]tile)
+	}
+	g.tiles[position{row: row, col: col}] = tile{kind: tileWall}
+}
+
+func (g *gridworldEnv) setSlipTile(row, col int, probability float64) {
+	if row < 0 || row >= g.rows || col < 0 || col >= g.cols {
+		return
+	}
+	if probability < 0 {
+		probability = 0
+	}
+	if probability > 1 {
+		probability = 1
+	}
+	if g.tiles == nil {
+		g.tiles = make(map[position]tile)
+	}
+	g.tiles[position{row: row, col: col}] = tile{kind: tileSlip, slipProb: probability}
+}
+
+func (g *gridworldEnv) tileAt(row, col int) tile {
+	if g.tiles == nil {
+		return tile{kind: tileEmpty}
+	}
+	if t, ok := g.tiles[position{row: row, col: col}]; ok {
+		return t
+	}
+	return tile{kind: tileEmpty}
+}
+
+func (g *gridworldEnv) wallPositions() []Position {
+	if len(g.tiles) == 0 {
+		return nil
+	}
+	positions := make([]Position, 0, len(g.tiles))
+	for pos, t := range g.tiles {
+		if t.kind != tileWall {
+			continue
+		}
+		positions = append(positions, Position{Row: pos.row, Col: pos.col})
+	}
+	if len(positions) == 0 {
+		return nil
+	}
+	return positions
+}
+
+func (g *gridworldEnv) slipTiles() []SlipTile {
+	if len(g.tiles) == 0 {
+		return nil
+	}
+	tiles := make([]SlipTile, 0, len(g.tiles))
+	for pos, t := range g.tiles {
+		if t.kind != tileSlip {
+			continue
+		}
+		tiles = append(tiles, SlipTile{Row: pos.row, Col: pos.col, Probability: t.slipProb})
+	}
+	if len(tiles) == 0 {
+		return nil
+	}
+	return tiles
+}
+
 func (g *gridworldEnv) step(action int) (float64, bool) {
 	if g.stepsTaken >= g.maxSteps {
 		return 0, true
 	}
-	row, col := g.nextPosition(action)
+	actual := g.resolveAction(action)
+	row, col := g.nextPosition(actual)
+	if g.tileAt(row, col).kind == tileWall {
+		row, col = g.currRow, g.currCol
+	}
 	g.currRow = row
 	g.currCol = col
 	g.stepsTaken++
@@ -140,6 +236,26 @@ func (g *gridworldEnv) potential(row, col int) float64 {
 		}
 	}
 	return float64(minDist)
+}
+
+func (g *gridworldEnv) resolveAction(action int) int {
+	tile := g.tileAt(g.currRow, g.currCol)
+	if tile.kind != tileSlip {
+		return action
+	}
+	if g.rng == nil {
+		return action
+	}
+	if tile.slipProb <= 0 {
+		return action
+	}
+	if tile.slipProb >= 1 {
+		return g.rng.Intn(4)
+	}
+	if g.rng.Float64() < tile.slipProb {
+		return g.rng.Intn(4)
+	}
+	return action
 }
 
 func absInt(v int) int {
