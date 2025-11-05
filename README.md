@@ -54,3 +54,9 @@ Goal: learn single-agent and multi-agent systems by building everything yourself
     --algorithm q-learning --episodes 300 --seed 7 \
     --wall 1,1 --wall 2,2 --slip 1,2,0.2
   ```
+- Capture profiles for performance analysis:
+  ```bash
+  go run ./cmd/tinyrl train \
+    --algorithm montecarlo --episodes 500 \
+    --pprof-cpu cpu.out --pprof-heap heap.out
+  ```

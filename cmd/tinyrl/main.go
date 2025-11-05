@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 
@@ -70,6 +71,8 @@ func runTrain(args []string) error {
 	warmupPenalty := fs.Float64("warmup-step-penalty", 0, "step penalty during warmup episodes")
 	metricsCSV := fs.String("metrics-csv", "", "write per-episode metrics to CSV at path")
 	runJSON := fs.String("run-json", "", "write final run summary as JSON at path")
+	pprofCPU := fs.String("pprof-cpu", "", "write CPU profile to the given path")
+	pprofHeap := fs.String("pprof-heap", "", "write heap profile to the given path at exit")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -192,6 +195,25 @@ func runTrain(args []string) error {
 		}()
 	}
 
+	var cpuProfileFile *os.File
+	if *pprofCPU != "" {
+		file, err := os.Create(*pprofCPU)
+		if err != nil {
+			return fmt.Errorf("create CPU profile: %w", err)
+		}
+		if err := pprof.StartCPUProfile(file); err != nil {
+			file.Close()
+			return fmt.Errorf("start CPU profile: %w", err)
+		}
+		cpuProfileFile = file
+		defer func() {
+			pprof.StopCPUProfile()
+			if err := cpuProfileFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "CPU profile close error: %v\n", err)
+			}
+		}()
+	}
+
 	fmt.Printf("train config => env=%s episodes=%d seed=%d epsilon=%.2f epsilonMin=%.2f epsilonDecay=%.3f alpha=%.2f gamma=%.2f lambda=%.2f rows=%d cols=%d stepDelayMs=%d maxSteps=%d stepPenalty=%.3f warmupEpisodes=%d warmupPenalty=%.3f effectiveStepPenalty=%.3f goalCount=%d goalInterval=%d softmaxTemp=%.2f softmaxMinTemp=%.2f randomStart=%t dumpTrajectory=%t algorithm=%s\n", *envName, *episodes, *seed, *epsilon, *epsilonMin, *epsilonDecay, *alpha, *gamma, *lambda, *rows, *cols, *stepDelay, *maxSteps, *stepPenalty, *warmupEpisodes, *warmupPenalty, effectivePenalty, *goalCount, *goalInterval, *softmaxTemp, *softmaxMinTemp, *randomStart, *dumpTrajectory, *algorithm)
 
 	cfg := engine.Config{
@@ -305,6 +327,20 @@ func runTrain(args []string) error {
 		payload.Summary.SuccessRate = successRate
 		if err := runSummaryEnc.Encode(payload); err != nil {
 			return fmt.Errorf("write run summary json: %w", err)
+		}
+	}
+
+	if *pprofHeap != "" {
+		heapFile, err := os.Create(*pprofHeap)
+		if err != nil {
+			return fmt.Errorf("create heap profile: %w", err)
+		}
+		if err := pprof.WriteHeapProfile(heapFile); err != nil {
+			heapFile.Close()
+			return fmt.Errorf("write heap profile: %w", err)
+		}
+		if err := heapFile.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "heap profile close error: %v\n", err)
 		}
 	}
 
