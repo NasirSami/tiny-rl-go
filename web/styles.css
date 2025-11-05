@@ -167,19 +167,35 @@ button:hover {
   color: #555;
 }
 
+.status-retry {
+  display: inline-block;
+  margin: 0 0 0 8px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border: none;
+  background: none;
+  color: #0d6efd;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.status-retry:focus-visible {
+  outline: 2px solid #0d6efd;
+  outline-offset: 2px;
+}
+
 .main {
   background: #fff;
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .canvas-container {
   position: relative;
   display: inline-block;
+  overflow: visible;
+  margin: 0;
 }
 
 #gridCanvas {
@@ -191,14 +207,39 @@ button:hover {
 
 .resize-handle {
   position: absolute;
-  width: 16px;
-  height: 16px;
-  right: 4px;
-  bottom: 4px;
-  background: rgba(13, 110, 253, 0.9);
-  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  right: -18px;
+  bottom: -18px;
+  background: transparent;
+  border-radius: 50%;
   cursor: nwse-resize;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.resize-handle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.resize-handle svg path {
+  fill: none;
+  stroke: #0d6efd;
+  stroke-width: 2.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.resize-handle:hover,
+.resize-handle:focus-visible {
+  background: rgba(13, 110, 253, 0.08);
+  transform: translate(1px, 1px);
+  outline: none;
 }
 
 .canvas-instructions {
@@ -211,6 +252,14 @@ button:hover {
   position: relative;
 }
 
+.main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-bottom: 0;
+  padding-right: 0;
+}
+
 .canvas-toolbar {
   display: flex;
   justify-content: space-between;
@@ -218,6 +267,12 @@ button:hover {
   margin-bottom: 8px;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .view-toggle {
@@ -270,14 +325,17 @@ button:hover {
   width: 120px;
 }
 
-.slip-probability span {
+.slip-probability output {
   font-variant-numeric: tabular-nums;
   min-width: 40px;
 }
 
 .slip-probability.disabled {
-  opacity: 0.5;
-  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.slip-probability.disabled input[type='range'] {
+  opacity: 0.6;
 }
 
 .obstacle-group {
@@ -426,14 +484,59 @@ button:hover {
   font-variant-numeric: tabular-nums;
 }
 
-#eventLog {
+.log-panel {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.log-panel summary {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #0d6efd;
+  cursor: pointer;
+}
+
+.log-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+  align-items: center;
+}
+
+.log-controls label {
+  font-size: 0.8rem;
+  color: #495057;
+}
+
+.log-controls button {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 6px;
+}
+
+.log-entries {
   background: #fafafa;
   border-radius: 8px;
   padding: 8px;
-  max-height: 300px;
+  max-height: 260px;
   overflow-y: auto;
   font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.8rem;
+  list-style: none;
+  margin: 0;
+}
+
+.log-entry {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
 }
 
 @media (max-width: 1024px) {

@@ -27,24 +27,24 @@
                 <span class="slider-title">Episodes</span>
                 <span class="slider-help">Number of training episodes per run.</span>
                 <div class="slider-row">
-                  <input type="range" name="episodes" min="1" max="300" value="100" data-output-target="episodesOutput" />
-                  <span class="slider-output" id="episodesOutput">100</span>
+                  <input id="episodesSlider" type="range" name="episodes" min="1" max="300" value="100" data-output-target="episodesOutput" aria-describedby="episodesOutput" />
+                  <output class="slider-output" id="episodesOutput" for="episodesSlider" aria-live="polite">100</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Seed</span>
                 <span class="slider-help">Deterministic seed for reproducible runs.</span>
                 <div class="slider-row">
-                  <input type="range" name="seed" min="0" max="1000" value="7" data-output-target="seedOutput" />
-                  <span class="slider-output" id="seedOutput">7</span>
+                  <input id="seedSlider" type="range" name="seed" min="0" max="1000" value="7" data-output-target="seedOutput" aria-describedby="seedOutput" />
+                  <output class="slider-output" id="seedOutput" for="seedSlider" aria-live="polite">7</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Step Delay (ms)</span>
                 <span class="slider-help">Playback delay between rendered steps.</span>
                 <div class="slider-row">
-                  <input type="range" name="stepDelayMs" min="0" max="100" step="5" value="60" data-output-target="delayOutput" />
-                  <span class="slider-output" id="delayOutput">60</span>
+                  <input id="stepDelaySlider" type="range" name="stepDelayMs" min="0" max="100" step="5" value="60" data-output-target="delayOutput" aria-describedby="delayOutput" />
+                  <output class="slider-output" id="delayOutput" for="stepDelaySlider" aria-live="polite">60</output>
                 </div>
               </label>
             </div>
@@ -57,24 +57,24 @@
                 <span class="slider-title">Epsilon</span>
                 <span class="slider-help">Exploration rate (probability of random action).</span>
                 <div class="slider-row">
-                  <input type="range" name="epsilon" min="0" max="1" step="0.01" value="0.5" data-output-target="epsilonOutput" />
-                  <span class="slider-output" id="epsilonOutput">0.50</span>
+                  <input id="epsilonSlider" type="range" name="epsilon" min="0" max="1" step="0.01" value="0.5" data-output-target="epsilonOutput" aria-describedby="epsilonOutput" />
+                  <output class="slider-output" id="epsilonOutput" for="epsilonSlider" aria-live="polite">0.50</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Alpha</span>
                 <span class="slider-help">Learning rate for value/Q updates.</span>
                 <div class="slider-row">
-                  <input type="range" name="alpha" min="0" max="1" step="0.01" value="0.2" data-output-target="alphaOutput" />
-                  <span class="slider-output" id="alphaOutput">0.20</span>
+                  <input id="alphaSlider" type="range" name="alpha" min="0" max="1" step="0.01" value="0.2" data-output-target="alphaOutput" aria-describedby="alphaOutput" />
+                  <output class="slider-output" id="alphaOutput" for="alphaSlider" aria-live="polite">0.20</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Gamma</span>
                 <span class="slider-help">Discount factor for future rewards.</span>
                 <div class="slider-row">
-                  <input type="range" name="gamma" min="0" max="1" step="0.01" value="0.9" data-output-target="gammaOutput" />
-                  <span class="slider-output" id="gammaOutput">0.90</span>
+                  <input id="gammaSlider" type="range" name="gamma" min="0" max="1" step="0.01" value="0.9" data-output-target="gammaOutput" aria-describedby="gammaOutput" />
+                  <output class="slider-output" id="gammaOutput" for="gammaSlider" aria-live="polite">0.90</output>
                 </div>
               </label>
             </div>
@@ -87,40 +87,40 @@
                 <span class="slider-title">Rows</span>
                 <span class="slider-help">Number of grid rows.</span>
                 <div class="slider-row">
-                  <input type="range" name="rows" min="1" max="20" value="4" data-output-target="rowsOutput" />
-                  <span class="slider-output" id="rowsOutput">4</span>
+                  <input id="rowsSlider" type="range" name="rows" min="1" max="20" value="4" data-output-target="rowsOutput" aria-describedby="rowsOutput" />
+                  <output class="slider-output" id="rowsOutput" for="rowsSlider" aria-live="polite">4</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Columns</span>
                 <span class="slider-help">Number of grid columns.</span>
                 <div class="slider-row">
-                  <input type="range" name="cols" min="1" max="20" value="4" data-output-target="colsOutput" />
-                  <span class="slider-output" id="colsOutput">4</span>
+                  <input id="colsSlider" type="range" name="cols" min="1" max="20" value="4" data-output-target="colsOutput" aria-describedby="colsOutput" />
+                  <output class="slider-output" id="colsOutput" for="colsSlider" aria-live="polite">4</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Step Penalty</span>
                 <span class="slider-help">Reward deducted each move (encourages shorter paths).</span>
                 <div class="slider-row">
-                  <input type="range" name="stepPenalty" min="0" max="0.1" step="0.005" value="0.02" data-output-target="penaltyOutput" />
-                  <span class="slider-output" id="penaltyOutput">0.02</span>
+                  <input id="stepPenaltySlider" type="range" name="stepPenalty" min="0" max="0.1" step="0.005" value="0.02" data-output-target="penaltyOutput" aria-describedby="penaltyOutput" />
+                  <output class="slider-output" id="penaltyOutput" for="stepPenaltySlider" aria-live="polite">0.02</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Goal Count</span>
                 <span class="slider-help">Number of goals auto-placed before training starts.</span>
                 <div class="slider-row">
-                  <input type="range" name="goalCount" min="0" max="10" step="1" value="2" data-output-target="goalCountOutput" />
-                  <span class="slider-output" id="goalCountOutput">2</span>
+                  <input id="goalCountSlider" type="range" name="goalCount" min="0" max="10" step="1" value="2" data-output-target="goalCountOutput" aria-describedby="goalCountOutput" />
+                  <output class="slider-output" id="goalCountOutput" for="goalCountSlider" aria-live="polite">2</output>
                 </div>
               </label>
               <label class="slider-label">
                 <span class="slider-title">Goal Interval</span>
                 <span class="slider-help">Episodes between goal reshuffles (0 keeps layout).</span>
                 <div class="slider-row">
-                  <input type="range" name="goalInterval" min="0" max="10" step="1" value="0" data-output-target="goalIntervalOutput" />
-                  <span class="slider-output" id="goalIntervalOutput">0</span>
+                  <input id="goalIntervalSlider" type="range" name="goalInterval" min="0" max="10" step="1" value="0" data-output-target="goalIntervalOutput" aria-describedby="goalIntervalOutput" />
+                  <output class="slider-output" id="goalIntervalOutput" for="goalIntervalSlider" aria-live="polite">0</output>
                 </div>
               </label>
             </div>
@@ -133,8 +133,8 @@
               <div>
                 <strong>Walls</strong>
                 <div class="obstacle-row">
-                  <input type="number" id="wallRow" min="0" value="0" />
-                  <input type="number" id="wallCol" min="0" value="0" />
+                  <input type="number" id="wallRow" min="0" max="19" value="0" />
+                  <input type="number" id="wallCol" min="0" max="19" value="0" />
                   <button type="button" id="addWallBtn">Add Wall</button>
                 </div>
                 <ul id="wallList" class="obstacle-list"></ul>
@@ -142,8 +142,8 @@
               <div>
                 <strong>Slip Tiles</strong>
                 <div class="obstacle-row">
-                  <input type="number" id="slipRow" min="0" value="0" />
-                  <input type="number" id="slipCol" min="0" value="0" />
+                  <input type="number" id="slipRow" min="0" max="19" value="0" />
+                  <input type="number" id="slipCol" min="0" max="19" value="0" />
                   <input type="number" id="slipProb" min="0" max="1" step="0.05" value="0.5" />
                   <button type="button" id="addSlipBtn">Add Slip</button>
                 </div>
@@ -152,22 +152,22 @@
             </div>
           </details>
           <div class="buttons">
-            <button type="submit">Start Training</button>
+            <button type="submit" id="startBtn" aria-disabled="true" disabled>Start Training</button>
             <button type="button" id="stopBtn">Stop</button>
           </div>
         </form>
-        <div class="status" id="status"></div>
+        <div class="status" id="status" role="status" aria-live="polite" aria-atomic="true"></div>
       </aside>
       <main class="main">
         <div class="canvas-toolbar">
-          <div class="obstacle-toolbar" id="obstacleToolbar">
-            <button type="button" data-tool="none" class="tool-button active">Navigate</button>
-            <button type="button" data-tool="wall" class="tool-button">Place Wall</button>
-            <button type="button" data-tool="slip" class="tool-button">Place Slip</button>
-            <button type="button" data-tool="erase" class="tool-button">Erase</button>
-            <label class="slip-probability" id="slipProbLabel">Slip p
-              <input type="range" id="slipProbSlider" min="0" max="1" step="0.05" value="0.5" />
-              <span id="slipProbValue">0.50</span>
+          <div class="obstacle-toolbar" id="obstacleToolbar" role="radiogroup" aria-label="Obstacle tools">
+            <button type="button" data-tool="none" class="tool-button active" role="radio" aria-checked="true" tabindex="0" aria-keyshortcuts="N">Navigate</button>
+            <button type="button" data-tool="wall" class="tool-button" role="radio" aria-checked="false" tabindex="-1" aria-keyshortcuts="W">Place Wall</button>
+            <button type="button" data-tool="slip" class="tool-button" role="radio" aria-checked="false" tabindex="-1" aria-keyshortcuts="S">Place Slip</button>
+            <button type="button" data-tool="erase" class="tool-button" role="radio" aria-checked="false" tabindex="-1" aria-keyshortcuts="E">Erase</button>
+            <label class="slip-probability disabled" id="slipProbLabel" aria-disabled="true">Slip probability
+              <input type="range" id="slipProbSlider" min="0" max="1" step="0.05" value="0.5" aria-describedby="slipProbValue" disabled />
+              <output id="slipProbValue" for="slipProbSlider" aria-live="polite">0.50</output>
             </label>
           </div>
           <div class="view-toggle">
@@ -177,15 +177,29 @@
         </div>
         <div class="canvas-container" id="canvasContainer">
           <canvas id="gridCanvas" width="400" height="400"></canvas>
-          <div class="resize-handle" id="resizeHandle"></div>
+          <button type="button" class="resize-handle" id="resizeHandle" aria-label="Resize grid" title="Resize grid">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M18 6A12 12 0 0 1 6 18" />
+              <path d="M6 18v5" />
+              <path d="M6 18H1" />
+            </svg>
+          </button>
         </div>
         <p class="canvas-instructions">Use the toolbar (shortcuts: N navigate, W wall, S slip, E erase) and drag the corner to resize the grid.</p>
       </main>
       <section class="metrics" id="metrics">
         <h2>Metrics</h2>
         <div id="metricSummary">Episode and reward stats will appear here.</div>
-        <h2>Event Log</h2>
-        <div id="eventLog"></div>
+        <details id="logPanel" class="log-panel" open>
+          <summary>Event Log</summary>
+          <div class="log-controls">
+            <label><input type="checkbox" id="logFilterEpisodes" checked /> Episodes</label>
+            <label><input type="checkbox" id="logFilterSuccess" checked /> Successes</label>
+            <label><input type="checkbox" id="logFilterGoals" checked /> Goals</label>
+            <button type="button" id="clearLogBtn">Clear</button>
+          </div>
+          <ul id="eventLog" class="log-entries" role="log" aria-live="polite" aria-relevant="additions text"></ul>
+        </details>
       </section>
     </div>
     <script src="wasm_exec.js"></script>

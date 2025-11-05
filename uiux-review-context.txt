@@ -1,0 +1,2516 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: README.md, web/index.html, web/main.js, web/styles.css, web/tinyrl.wasm, web/wasm_exec.js
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Directory Structure
+================================================================
+web/
+  index.html
+  main.js
+  styles.css
+  wasm_exec.js
+README.md
+
+================================================================
+Files
+================================================================
+
+================
+File: web/wasm_exec.js
+================
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+"use strict";
+
+(() => {
+	const enosys = () => {
+		const err = new Error("not implemented");
+		err.code = "ENOSYS";
+		return err;
+	};
+
+	if (!globalThis.fs) {
+		let outputBuf = "";
+		globalThis.fs = {
+			constants: { O_WRONLY: -1, O_RDWR: -1, O_CREAT: -1, O_TRUNC: -1, O_APPEND: -1, O_EXCL: -1, O_DIRECTORY: -1 }, // unused
+			writeSync(fd, buf) {
+				outputBuf += decoder.decode(buf);
+				const nl = outputBuf.lastIndexOf("\n");
+				if (nl != -1) {
+					console.log(outputBuf.substring(0, nl));
+					outputBuf = outputBuf.substring(nl + 1);
+				}
+				return buf.length;
+			},
+			write(fd, buf, offset, length, position, callback) {
+				if (offset !== 0 || length !== buf.length || position !== null) {
+					callback(enosys());
+					return;
+				}
+				const n = this.writeSync(fd, buf);
+				callback(null, n);
+			},
+			chmod(path, mode, callback) { callback(enosys()); },
+			chown(path, uid, gid, callback) { callback(enosys()); },
+			close(fd, callback) { callback(enosys()); },
+			fchmod(fd, mode, callback) { callback(enosys()); },
+			fchown(fd, uid, gid, callback) { callback(enosys()); },
+			fstat(fd, callback) { callback(enosys()); },
+			fsync(fd, callback) { callback(null); },
+			ftruncate(fd, length, callback) { callback(enosys()); },
+			lchown(path, uid, gid, callback) { callback(enosys()); },
+			link(path, link, callback) { callback(enosys()); },
+			lstat(path, callback) { callback(enosys()); },
+			mkdir(path, perm, callback) { callback(enosys()); },
+			open(path, flags, mode, callback) { callback(enosys()); },
+			read(fd, buffer, offset, length, position, callback) { callback(enosys()); },
+			readdir(path, callback) { callback(enosys()); },
+			readlink(path, callback) { callback(enosys()); },
+			rename(from, to, callback) { callback(enosys()); },
+			rmdir(path, callback) { callback(enosys()); },
+			stat(path, callback) { callback(enosys()); },
+			symlink(path, link, callback) { callback(enosys()); },
+			truncate(path, length, callback) { callback(enosys()); },
+			unlink(path, callback) { callback(enosys()); },
+			utimes(path, atime, mtime, callback) { callback(enosys()); },
+		};
+	}
+
+	if (!globalThis.process) {
+		globalThis.process = {
+			getuid() { return -1; },
+			getgid() { return -1; },
+			geteuid() { return -1; },
+			getegid() { return -1; },
+			getgroups() { throw enosys(); },
+			pid: -1,
+			ppid: -1,
+			umask() { throw enosys(); },
+			cwd() { throw enosys(); },
+			chdir() { throw enosys(); },
+		}
+	}
+
+	if (!globalThis.path) {
+		globalThis.path = {
+			resolve(...pathSegments) {
+				return pathSegments.join("/");
+			}
+		}
+	}
+
+	if (!globalThis.crypto) {
+		throw new Error("globalThis.crypto is not available, polyfill required (crypto.getRandomValues only)");
+	}
+
+	if (!globalThis.performance) {
+		throw new Error("globalThis.performance is not available, polyfill required (performance.now only)");
+	}
+
+	if (!globalThis.TextEncoder) {
+		throw new Error("globalThis.TextEncoder is not available, polyfill required");
+	}
+
+	if (!globalThis.TextDecoder) {
+		throw new Error("globalThis.TextDecoder is not available, polyfill required");
+	}
+
+	const encoder = new TextEncoder("utf-8");
+	const decoder = new TextDecoder("utf-8");
+
+	globalThis.Go = class {
+		constructor() {
+			this.argv = ["js"];
+			this.env = {};
+			this.exit = (code) => {
+				if (code !== 0) {
+					console.warn("exit code:", code);
+				}
+			};
+			this._exitPromise = new Promise((resolve) => {
+				this._resolveExitPromise = resolve;
+			});
+			this._pendingEvent = null;
+			this._scheduledTimeouts = new Map();
+			this._nextCallbackTimeoutID = 1;
+
+			const setInt64 = (addr, v) => {
+				this.mem.setUint32(addr + 0, v, true);
+				this.mem.setUint32(addr + 4, Math.floor(v / 4294967296), true);
+			}
+
+			const setInt32 = (addr, v) => {
+				this.mem.setUint32(addr + 0, v, true);
+			}
+
+			const getInt64 = (addr) => {
+				const low = this.mem.getUint32(addr + 0, true);
+				const high = this.mem.getInt32(addr + 4, true);
+				return low + high * 4294967296;
+			}
+
+			const loadValue = (addr) => {
+				const f = this.mem.getFloat64(addr, true);
+				if (f === 0) {
+					return undefined;
+				}
+				if (!isNaN(f)) {
+					return f;
+				}
+
+				const id = this.mem.getUint32(addr, true);
+				return this._values[id];
+			}
+
+			const storeValue = (addr, v) => {
+				const nanHead = 0x7FF80000;
+
+				if (typeof v === "number" && v !== 0) {
+					if (isNaN(v)) {
+						this.mem.setUint32(addr + 4, nanHead, true);
+						this.mem.setUint32(addr, 0, true);
+						return;
+					}
+					this.mem.setFloat64(addr, v, true);
+					return;
+				}
+
+				if (v === undefined) {
+					this.mem.setFloat64(addr, 0, true);
+					return;
+				}
+
+				let id = this._ids.get(v);
+				if (id === undefined) {
+					id = this._idPool.pop();
+					if (id === undefined) {
+						id = this._values.length;
+					}
+					this._values[id] = v;
+					this._goRefCounts[id] = 0;
+					this._ids.set(v, id);
+				}
+				this._goRefCounts[id]++;
+				let typeFlag = 0;
+				switch (typeof v) {
+					case "object":
+						if (v !== null) {
+							typeFlag = 1;
+						}
+						break;
+					case "string":
+						typeFlag = 2;
+						break;
+					case "symbol":
+						typeFlag = 3;
+						break;
+					case "function":
+						typeFlag = 4;
+						break;
+				}
+				this.mem.setUint32(addr + 4, nanHead | typeFlag, true);
+				this.mem.setUint32(addr, id, true);
+			}
+
+			const loadSlice = (addr) => {
+				const array = getInt64(addr + 0);
+				const len = getInt64(addr + 8);
+				return new Uint8Array(this._inst.exports.mem.buffer, array, len);
+			}
+
+			const loadSliceOfValues = (addr) => {
+				const array = getInt64(addr + 0);
+				const len = getInt64(addr + 8);
+				const a = new Array(len);
+				for (let i = 0; i < len; i++) {
+					a[i] = loadValue(array + i * 8);
+				}
+				return a;
+			}
+
+			const loadString = (addr) => {
+				const saddr = getInt64(addr + 0);
+				const len = getInt64(addr + 8);
+				return decoder.decode(new DataView(this._inst.exports.mem.buffer, saddr, len));
+			}
+
+			const testCallExport = (a, b) => {
+				this._inst.exports.testExport0();
+				return this._inst.exports.testExport(a, b);
+			}
+
+			const timeOrigin = Date.now() - performance.now();
+			this.importObject = {
+				_gotest: {
+					add: (a, b) => a + b,
+					callExport: testCallExport,
+				},
+				gojs: {
+					// Go's SP does not change as long as no Go code is running. Some operations (e.g. calls, getters and setters)
+					// may synchronously trigger a Go event handler. This makes Go code get executed in the middle of the imported
+					// function. A goroutine can switch to a new stack if the current stack is too small (see morestack function).
+					// This changes the SP, thus we have to update the SP used by the imported function.
+
+					// func wasmExit(code int32)
+					"runtime.wasmExit": (sp) => {
+						sp >>>= 0;
+						const code = this.mem.getInt32(sp + 8, true);
+						this.exited = true;
+						delete this._inst;
+						delete this._values;
+						delete this._goRefCounts;
+						delete this._ids;
+						delete this._idPool;
+						this.exit(code);
+					},
+
+					// func wasmWrite(fd uintptr, p unsafe.Pointer, n int32)
+					"runtime.wasmWrite": (sp) => {
+						sp >>>= 0;
+						const fd = getInt64(sp + 8);
+						const p = getInt64(sp + 16);
+						const n = this.mem.getInt32(sp + 24, true);
+						fs.writeSync(fd, new Uint8Array(this._inst.exports.mem.buffer, p, n));
+					},
+
+					// func resetMemoryDataView()
+					"runtime.resetMemoryDataView": (sp) => {
+						sp >>>= 0;
+						this.mem = new DataView(this._inst.exports.mem.buffer);
+					},
+
+					// func nanotime1() int64
+					"runtime.nanotime1": (sp) => {
+						sp >>>= 0;
+						setInt64(sp + 8, (timeOrigin + performance.now()) * 1000000);
+					},
+
+					// func walltime() (sec int64, nsec int32)
+					"runtime.walltime": (sp) => {
+						sp >>>= 0;
+						const msec = (new Date).getTime();
+						setInt64(sp + 8, msec / 1000);
+						this.mem.setInt32(sp + 16, (msec % 1000) * 1000000, true);
+					},
+
+					// func scheduleTimeoutEvent(delay int64) int32
+					"runtime.scheduleTimeoutEvent": (sp) => {
+						sp >>>= 0;
+						const id = this._nextCallbackTimeoutID;
+						this._nextCallbackTimeoutID++;
+						this._scheduledTimeouts.set(id, setTimeout(
+							() => {
+								this._resume();
+								while (this._scheduledTimeouts.has(id)) {
+									// for some reason Go failed to register the timeout event, log and try again
+									// (temporary workaround for https://github.com/golang/go/issues/28975)
+									console.warn("scheduleTimeoutEvent: missed timeout event");
+									this._resume();
+								}
+							},
+							getInt64(sp + 8),
+						));
+						this.mem.setInt32(sp + 16, id, true);
+					},
+
+					// func clearTimeoutEvent(id int32)
+					"runtime.clearTimeoutEvent": (sp) => {
+						sp >>>= 0;
+						const id = this.mem.getInt32(sp + 8, true);
+						clearTimeout(this._scheduledTimeouts.get(id));
+						this._scheduledTimeouts.delete(id);
+					},
+
+					// func getRandomData(r []byte)
+					"runtime.getRandomData": (sp) => {
+						sp >>>= 0;
+						crypto.getRandomValues(loadSlice(sp + 8));
+					},
+
+					// func finalizeRef(v ref)
+					"syscall/js.finalizeRef": (sp) => {
+						sp >>>= 0;
+						const id = this.mem.getUint32(sp + 8, true);
+						this._goRefCounts[id]--;
+						if (this._goRefCounts[id] === 0) {
+							const v = this._values[id];
+							this._values[id] = null;
+							this._ids.delete(v);
+							this._idPool.push(id);
+						}
+					},
+
+					// func stringVal(value string) ref
+					"syscall/js.stringVal": (sp) => {
+						sp >>>= 0;
+						storeValue(sp + 24, loadString(sp + 8));
+					},
+
+					// func valueGet(v ref, p string) ref
+					"syscall/js.valueGet": (sp) => {
+						sp >>>= 0;
+						const result = Reflect.get(loadValue(sp + 8), loadString(sp + 16));
+						sp = this._inst.exports.getsp() >>> 0; // see comment above
+						storeValue(sp + 32, result);
+					},
+
+					// func valueSet(v ref, p string, x ref)
+					"syscall/js.valueSet": (sp) => {
+						sp >>>= 0;
+						Reflect.set(loadValue(sp + 8), loadString(sp + 16), loadValue(sp + 32));
+					},
+
+					// func valueDelete(v ref, p string)
+					"syscall/js.valueDelete": (sp) => {
+						sp >>>= 0;
+						Reflect.deleteProperty(loadValue(sp + 8), loadString(sp + 16));
+					},
+
+					// func valueIndex(v ref, i int) ref
+					"syscall/js.valueIndex": (sp) => {
+						sp >>>= 0;
+						storeValue(sp + 24, Reflect.get(loadValue(sp + 8), getInt64(sp + 16)));
+					},
+
+					// valueSetIndex(v ref, i int, x ref)
+					"syscall/js.valueSetIndex": (sp) => {
+						sp >>>= 0;
+						Reflect.set(loadValue(sp + 8), getInt64(sp + 16), loadValue(sp + 24));
+					},
+
+					// func valueCall(v ref, m string, args []ref) (ref, bool)
+					"syscall/js.valueCall": (sp) => {
+						sp >>>= 0;
+						try {
+							const v = loadValue(sp + 8);
+							const m = Reflect.get(v, loadString(sp + 16));
+							const args = loadSliceOfValues(sp + 32);
+							const result = Reflect.apply(m, v, args);
+							sp = this._inst.exports.getsp() >>> 0; // see comment above
+							storeValue(sp + 56, result);
+							this.mem.setUint8(sp + 64, 1);
+						} catch (err) {
+							sp = this._inst.exports.getsp() >>> 0; // see comment above
+							storeValue(sp + 56, err);
+							this.mem.setUint8(sp + 64, 0);
+						}
+					},
+
+					// func valueInvoke(v ref, args []ref) (ref, bool)
+					"syscall/js.valueInvoke": (sp) => {
+						sp >>>= 0;
+						try {
+							const v = loadValue(sp + 8);
+							const args = loadSliceOfValues(sp + 16);
+							const result = Reflect.apply(v, undefined, args);
+							sp = this._inst.exports.getsp() >>> 0; // see comment above
+							storeValue(sp + 40, result);
+							this.mem.setUint8(sp + 48, 1);
+						} catch (err) {
+							sp = this._inst.exports.getsp() >>> 0; // see comment above
+							storeValue(sp + 40, err);
+							this.mem.setUint8(sp + 48, 0);
+						}
+					},
+
+					// func valueNew(v ref, args []ref) (ref, bool)
+					"syscall/js.valueNew": (sp) => {
+						sp >>>= 0;
+						try {
+							const v = loadValue(sp + 8);
+							const args = loadSliceOfValues(sp + 16);
+							const result = Reflect.construct(v, args);
+							sp = this._inst.exports.getsp() >>> 0; // see comment above
+							storeValue(sp + 40, result);
+							this.mem.setUint8(sp + 48, 1);
+						} catch (err) {
+							sp = this._inst.exports.getsp() >>> 0; // see comment above
+							storeValue(sp + 40, err);
+							this.mem.setUint8(sp + 48, 0);
+						}
+					},
+
+					// func valueLength(v ref) int
+					"syscall/js.valueLength": (sp) => {
+						sp >>>= 0;
+						setInt64(sp + 16, parseInt(loadValue(sp + 8).length));
+					},
+
+					// valuePrepareString(v ref) (ref, int)
+					"syscall/js.valuePrepareString": (sp) => {
+						sp >>>= 0;
+						const str = encoder.encode(String(loadValue(sp + 8)));
+						storeValue(sp + 16, str);
+						setInt64(sp + 24, str.length);
+					},
+
+					// valueLoadString(v ref, b []byte)
+					"syscall/js.valueLoadString": (sp) => {
+						sp >>>= 0;
+						const str = loadValue(sp + 8);
+						loadSlice(sp + 16).set(str);
+					},
+
+					// func valueInstanceOf(v ref, t ref) bool
+					"syscall/js.valueInstanceOf": (sp) => {
+						sp >>>= 0;
+						this.mem.setUint8(sp + 24, (loadValue(sp + 8) instanceof loadValue(sp + 16)) ? 1 : 0);
+					},
+
+					// func copyBytesToGo(dst []byte, src ref) (int, bool)
+					"syscall/js.copyBytesToGo": (sp) => {
+						sp >>>= 0;
+						const dst = loadSlice(sp + 8);
+						const src = loadValue(sp + 32);
+						if (!(src instanceof Uint8Array || src instanceof Uint8ClampedArray)) {
+							this.mem.setUint8(sp + 48, 0);
+							return;
+						}
+						const toCopy = src.subarray(0, dst.length);
+						dst.set(toCopy);
+						setInt64(sp + 40, toCopy.length);
+						this.mem.setUint8(sp + 48, 1);
+					},
+
+					// func copyBytesToJS(dst ref, src []byte) (int, bool)
+					"syscall/js.copyBytesToJS": (sp) => {
+						sp >>>= 0;
+						const dst = loadValue(sp + 8);
+						const src = loadSlice(sp + 16);
+						if (!(dst instanceof Uint8Array || dst instanceof Uint8ClampedArray)) {
+							this.mem.setUint8(sp + 48, 0);
+							return;
+						}
+						const toCopy = src.subarray(0, dst.length);
+						dst.set(toCopy);
+						setInt64(sp + 40, toCopy.length);
+						this.mem.setUint8(sp + 48, 1);
+					},
+
+					"debug": (value) => {
+						console.log(value);
+					},
+				}
+			};
+		}
+
+		async run(instance) {
+			if (!(instance instanceof WebAssembly.Instance)) {
+				throw new Error("Go.run: WebAssembly.Instance expected");
+			}
+			this._inst = instance;
+			this.mem = new DataView(this._inst.exports.mem.buffer);
+			this._values = [ // JS values that Go currently has references to, indexed by reference id
+				NaN,
+				0,
+				null,
+				true,
+				false,
+				globalThis,
+				this,
+			];
+			this._goRefCounts = new Array(this._values.length).fill(Infinity); // number of references that Go has to a JS value, indexed by reference id
+			this._ids = new Map([ // mapping from JS values to reference ids
+				[0, 1],
+				[null, 2],
+				[true, 3],
+				[false, 4],
+				[globalThis, 5],
+				[this, 6],
+			]);
+			this._idPool = [];   // unused ids that have been garbage collected
+			this.exited = false; // whether the Go program has exited
+
+			// Pass command line arguments and environment variables to WebAssembly by writing them to the linear memory.
+			let offset = 4096;
+
+			const strPtr = (str) => {
+				const ptr = offset;
+				const bytes = encoder.encode(str + "\0");
+				new Uint8Array(this.mem.buffer, offset, bytes.length).set(bytes);
+				offset += bytes.length;
+				if (offset % 8 !== 0) {
+					offset += 8 - (offset % 8);
+				}
+				return ptr;
+			};
+
+			const argc = this.argv.length;
+
+			const argvPtrs = [];
+			this.argv.forEach((arg) => {
+				argvPtrs.push(strPtr(arg));
+			});
+			argvPtrs.push(0);
+
+			const keys = Object.keys(this.env).sort();
+			keys.forEach((key) => {
+				argvPtrs.push(strPtr(`${key}=${this.env[key]}`));
+			});
+			argvPtrs.push(0);
+
+			const argv = offset;
+			argvPtrs.forEach((ptr) => {
+				this.mem.setUint32(offset, ptr, true);
+				this.mem.setUint32(offset + 4, 0, true);
+				offset += 8;
+			});
+
+			// The linker guarantees global data starts from at least wasmMinDataAddr.
+			// Keep in sync with cmd/link/internal/ld/data.go:wasmMinDataAddr.
+			const wasmMinDataAddr = 4096 + 8192;
+			if (offset >= wasmMinDataAddr) {
+				throw new Error("total length of command line and environment variables exceeds limit");
+			}
+
+			this._inst.exports.run(argc, argv);
+			if (this.exited) {
+				this._resolveExitPromise();
+			}
+			await this._exitPromise;
+		}
+
+		_resume() {
+			if (this.exited) {
+				throw new Error("Go program has already exited");
+			}
+			this._inst.exports.resume();
+			if (this.exited) {
+				this._resolveExitPromise();
+			}
+		}
+
+		_makeFuncWrapper(id) {
+			const go = this;
+			return function () {
+				const event = { id: id, this: this, args: arguments };
+				go._pendingEvent = event;
+				go._resume();
+				return event.result;
+			};
+		}
+	}
+})();
+
+================
+File: web/styles.css
+================
+:root {
+  font-family: "Inter", system-ui, sans-serif;
+  color: #111;
+  background: #f5f5f5;
+}
+
+body, h1, h2, p {
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.sidebar {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar h1 {
+  font-size: 1.4rem;
+}
+
+.slider-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  gap: 4px;
+}
+
+.control-section {
+  margin-bottom: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.control-section summary {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #0d6efd;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-section summary::marker {
+  display: none;
+}
+
+.control-section[open] > summary::after {
+  content: '\25BC';
+  font-size: 0.7rem;
+  color: #0d6efd;
+}
+
+.control-section:not([open]) > summary::after {
+  content: '\25B6';
+  font-size: 0.7rem;
+  color: #0d6efd;
+}
+
+.control-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.control-grid .slider-label {
+  margin-bottom: 0;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.slider-title {
+  font-weight: 600;
+}
+
+.slider-help {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+input:not([type=range]),
+select,
+button {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 0.95rem;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: #d0d7de;
+  cursor: pointer;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0d6efd;
+}
+
+input[type=range]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0d6efd;
+  border: none;
+}
+
+.slider-output {
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #333;
+}
+
+button {
+  cursor: pointer;
+  background: #0d6efd;
+  color: #fff;
+  border: none;
+}
+
+button:hover {
+  background: #0b5ed7;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.status {
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.main {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-container {
+  position: relative;
+  display: inline-block;
+}
+
+#gridCanvas {
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #f8f9fa;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  right: 4px;
+  bottom: 4px;
+  background: rgba(13, 110, 253, 0.9);
+  border-radius: 4px;
+  cursor: nwse-resize;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-instructions {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.canvas-container {
+  position: relative;
+}
+
+.canvas-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.view-toggle button {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+}
+
+.view-toggle button.active {
+  background: #198754;
+}
+
+.obstacle-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tool-button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  background: #6c757d;
+  color: #fff;
+  cursor: pointer;
+}
+
+.tool-button.active {
+  background: #0d6efd;
+}
+
+.slip-probability {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.slip-probability input[type='range'] {
+  width: 120px;
+}
+
+.slip-probability span {
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+}
+
+.slip-probability.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.obstacle-group {
+  margin-top: 12px;
+}
+
+.obstacle-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.obstacle-controls > div {
+  flex: 1 1 200px;
+}
+
+.obstacle-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.obstacle-row input {
+  width: 70px;
+  padding: 4px;
+}
+
+.obstacle-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.obstacle-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  gap: 8px;
+}
+
+.obstacle-list button {
+  border: none;
+  background: none;
+  color: #d63384;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.obstacle-chip {
+  background: #e7f1ff;
+  color: #0b5ed7;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.obstacle-badge {
+  background: #fff3cd;
+  color: #856404;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.obstacle-empty {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: #6c757d;
+}
+
+.metrics {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.metric-cards {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.metric-card {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+
+.metric-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #0d1b2a;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-sub {
+  font-size: 0.75rem;
+  color: #6c757d;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-rolling {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.metric-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #eef2ff;
+  color: #3730a3;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.metric-pill strong {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-panel {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.log-panel summary {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #0d6efd;
+  cursor: pointer;
+}
+
+.log-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+  align-items: center;
+}
+
+.log-controls label {
+  font-size: 0.8rem;
+  color: #495057;
+}
+
+.log-controls button {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 6px;
+}
+
+.log-entries {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.8rem;
+}
+
+.log-entry {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar,
+  .metrics,
+  .main {
+    width: 100%;
+  }
+}
+
+================
+File: README.md
+================
+# tiny-rl-go
+
+CPU-only, **from-scratch** reinforcement-learning lab in Go (stdlib only).  
+Goal: learn single-agent and multi-agent systems by building everything yourself—no third-party libs, no GPU.
+
+## Features (v1)
+- **Solo GridWorld** (2-D, multi-goal), tabular Monte Carlo, Q-learning, and SARSA.
+- **Cooperative grid** with two independent Q-learners, switches that open a door, then each agent reaches its own goal.
+- CLI modes, moving-average rewards, greedy rollout with ASCII rendering, and a WASM playground.
+
+## Tutor-First Workflow (for Codex CLI)
+- Start in **Tutor Mode**: explanations, plan, and quiz—**no code**.
+- To allow code for a tiny scope, type:  
+  `CONFIRM: WRITE CODE — <scope>`
+- To apply a shown patch, type:  
+  `CONFIRM: APPLY PATCH`
+- After each patch, the agent returns to Tutor Mode.
+
+## Getting Started
+1. **Install Go** and verify with:
+   ```bash
+   go version
+   ```
+2. Rebuild and run the CLI playground:
+   ```bash
+   go run ./cmd/tinyrl train
+   ```
+3. Rebuild the WebAssembly bundle and launch the web UI:
+   ```bash
+   ./scripts/dev-web.sh        # default port 8080
+   ./scripts/dev-web.sh 8081   # optional custom port
+   ```
+
+### CLI Examples
+
+- Monte Carlo with default goal:
+  ```bash
+  go run ./cmd/tinyrl train --algorithm montecarlo --episodes 10
+  ```
+- Q-learning with custom goals (row,col,reward):
+  ```bash
+  go run ./cmd/tinyrl train \
+    --algorithm q-learning \
+    --alpha 0.5 --gamma 0.9 \
+    --goal 0,3,1 --goal 2,2,0.5
+  ```
+- Include a per-step penalty to discourage loops:
+  ```bash
+  go run ./cmd/tinyrl train --algorithm montecarlo --step-penalty 0.02
+  ```
+- Add walls and slip tiles:
+  ```bash
+  go run ./cmd/tinyrl train \
+    --algorithm q-learning --episodes 300 --seed 7 \
+    --wall 1,1 --wall 2,2 --slip 1,2,0.2
+  ```
+- Capture profiles for performance analysis:
+  ```bash
+  go run ./cmd/tinyrl train \
+    --algorithm montecarlo --episodes 500 \
+    --pprof-cpu cpu.out --pprof-heap heap.out
+  ```
+
+================
+File: web/main.js
+================
+const go = new Go();
+let wasmReady = false;
+let currentView = 'path';
+let lastSnapshot = null;
+const DEFAULT_PLAYBACK_DELAY = 60;
+let snapshotQueue = [];
+let isAnimating = false;
+let currentTrail = [];
+let lastEpisodeId = 0;
+let playbackDelayMs = DEFAULT_PLAYBACK_DELAY;
+let currentAlgorithm = 'montecarlo';
+let currentGamma = 0.9;
+let currentGoals = [];
+let currentWalls = [];
+let currentSlips = [];
+let currentTool = 'none';
+let hoverCell = null;
+let recentRewards = [];
+let recentSuccessFlags = [];
+let lastSuccessCount = 0;
+const logEntries = [];
+const canvas = document.getElementById('gridCanvas');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const metricsEl = document.getElementById('metricSummary');
+const logEl = document.getElementById('eventLog');
+const logFilterEpisodes = document.getElementById('logFilterEpisodes');
+const logFilterSuccess = document.getElementById('logFilterSuccess');
+const logFilterGoals = document.getElementById('logFilterGoals');
+const clearLogBtn = document.getElementById('clearLogBtn');
+const canvasContainer = document.getElementById('canvasContainer');
+const resizeHandle = document.getElementById('resizeHandle');
+const form = document.getElementById('controlForm');
+const rowSlider = form.querySelector('input[name="rows"]');
+const colSlider = form.querySelector('input[name="cols"]');
+const goalCountSlider = form.querySelector('input[name="goalCount"]');
+const goalIntervalSlider = form.querySelector('input[name="goalInterval"]');
+const sliderInputs = form.querySelectorAll('input[type="range"][data-output-target]');
+const wallRowInput = document.getElementById('wallRow');
+const wallColInput = document.getElementById('wallCol');
+const addWallBtn = document.getElementById('addWallBtn');
+const wallList = document.getElementById('wallList');
+const slipRowInput = document.getElementById('slipRow');
+const slipColInput = document.getElementById('slipCol');
+const slipProbInput = document.getElementById('slipProb');
+const addSlipBtn = document.getElementById('addSlipBtn');
+const slipList = document.getElementById('slipList');
+const obstacleToolbar = document.getElementById('obstacleToolbar');
+const toolButtons = obstacleToolbar ? Array.from(obstacleToolbar.querySelectorAll('.tool-button')) : [];
+const slipProbSlider = document.getElementById('slipProbSlider');
+const slipProbValue = document.getElementById('slipProbValue');
+const slipProbLabelEl = document.getElementById('slipProbLabel');
+
+const CELL_SIZE = 24;
+const MIN_ROWS = 1;
+const MAX_ROWS = 20;
+const MIN_COLS = 1;
+const MAX_COLS = 20;
+const DEFAULT_GOAL_REWARD = 1;
+
+const state = {
+  rows: Number(rowSlider.value),
+  cols: Number(colSlider.value),
+  goals: [],
+  walls: [],
+  slips: [],
+  goalCount: Number(goalCountSlider.value),
+  goalInterval: Number(goalIntervalSlider.value),
+};
+
+if (state.goalCount === 0) {
+  state.goals = [{ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD }];
+}
+currentGoals = state.goals.map((goal) => ({ ...goal }));
+let currentStepPenalty = Number(form.querySelector('input[name="stepPenalty"]').value);
+
+let isResizingCanvas = false;
+let resizeStart = null;
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function updateCanvasSize() {
+  canvas.width = state.cols * CELL_SIZE;
+  canvas.height = state.rows * CELL_SIZE;
+  canvasContainer.style.width = `${canvas.width}px`;
+  canvasContainer.style.height = `${canvas.height}px`;
+}
+
+function syncSlidersFromState() {
+  rowSlider.value = state.rows;
+  colSlider.value = state.cols;
+  updateSliderOutput(rowSlider);
+  updateSliderOutput(colSlider);
+}
+
+function updateSliderOutput(input) {
+  const targetId = input.dataset.outputTarget;
+  if (!targetId) return;
+  const output = document.getElementById(targetId);
+  if (!output) return;
+  const value = Number(input.value);
+  if (input.name === 'epsilon' || input.name === 'alpha' || input.name === 'gamma') {
+    output.textContent = value.toFixed(2);
+  } else if (input.name === 'stepPenalty') {
+    output.textContent = value.toFixed(3);
+  } else {
+    output.textContent = Math.round(value);
+  }
+}
+
+function initializeSliders() {
+  sliderInputs.forEach((input) => {
+    updateSliderOutput(input);
+    input.addEventListener('input', () => {
+      updateSliderOutput(input);
+      handleSliderChange(input.name, Number(input.value));
+    });
+  });
+  syncSlidersFromState();
+  renderObstacleLists();
+  if (slipProbSlider && slipProbValue) {
+    slipProbValue.textContent = Number(slipProbSlider.value).toFixed(2);
+  }
+}
+
+function handleSliderChange(name, value) {
+  switch (name) {
+    case 'rows':
+      state.rows = clamp(Math.round(value), MIN_ROWS, MAX_ROWS);
+      ensureGoalsWithinBounds();
+      updateCanvasSize();
+      resetAnimationState();
+      draw();
+      break;
+    case 'cols':
+      state.cols = clamp(Math.round(value), MIN_COLS, MAX_COLS);
+      ensureGoalsWithinBounds();
+      updateCanvasSize();
+      resetAnimationState();
+      draw();
+      break;
+    case 'stepDelayMs':
+      playbackDelayMs = value;
+      break;
+    case 'stepPenalty':
+      currentStepPenalty = value;
+      break;
+    case 'goalCount':
+      state.goalCount = Math.max(0, Math.round(value));
+      if (state.goalCount === 0 && state.goals.length === 0) {
+        state.goals = [{ row: 0, col: Math.max(state.cols - 1, 0), reward: DEFAULT_GOAL_REWARD }];
+      }
+      resetAnimationState();
+      draw();
+      break;
+    case 'goalInterval':
+      state.goalInterval = Math.max(0, Math.round(value));
+      break;
+    default:
+      break;
+  }
+}
+
+function ensureGoalsWithinBounds() {
+  state.goals = state.goals.filter((goal) => goal.row >= 0 && goal.row < state.rows && goal.col >= 0 && goal.col < state.cols);
+  currentGoals = state.goals.map((goal) => ({ ...goal }));
+  state.walls = state.walls.filter((wall) => wall.row >= 0 && wall.row < state.rows && wall.col >= 0 && wall.col < state.cols);
+  currentWalls = state.walls.map((wall) => ({ ...wall }));
+  state.slips = normalizeSlips(state.slips.filter((slip) => slip.row >= 0 && slip.row < state.rows && slip.col >= 0 && slip.col < state.cols));
+  currentSlips = state.slips.map((slip) => ({ ...slip }));
+  renderObstacleLists();
+}
+
+function startResize(event) {
+  event.preventDefault();
+  isResizingCanvas = true;
+  resizeStart = {
+    x: event.clientX,
+    y: event.clientY,
+    rows: state.rows,
+    cols: state.cols,
+  };
+  document.body.style.userSelect = 'none';
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup', stopResize);
+}
+
+function onResizeMove(event) {
+  if (!isResizingCanvas) return;
+  const dx = event.clientX - resizeStart.x;
+  const dy = event.clientY - resizeStart.y;
+  const newCols = clamp(Math.round((resizeStart.cols * CELL_SIZE + dx) / CELL_SIZE), MIN_COLS, MAX_COLS);
+  const newRows = clamp(Math.round((resizeStart.rows * CELL_SIZE + dy) / CELL_SIZE), MIN_ROWS, MAX_ROWS);
+  if (newCols !== state.cols || newRows !== state.rows) {
+    state.cols = newCols;
+    state.rows = newRows;
+    ensureGoalsWithinBounds();
+    syncSlidersFromState();
+    updateCanvasSize();
+    resetAnimationState();
+    draw();
+  }
+}
+
+function stopResize() {
+  if (!isResizingCanvas) return;
+  isResizingCanvas = false;
+  document.body.style.userSelect = '';
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', stopResize);
+}
+
+async function loadWasm() {
+  if (wasmReady) return;
+  const wasmResponse = await fetch('tinyrl.wasm');
+  const wasmBytes = await wasmResponse.arrayBuffer();
+  const result = await WebAssembly.instantiate(wasmBytes, go.importObject);
+  go.run(result.instance);
+  wasmReady = true;
+}
+
+function registerHandlers() {
+  window.tinyrlRegisterSnapshotHandler(handleSnapshot);
+}
+
+function handleSnapshot(snapshot) {
+  snapshotQueue.push(snapshot);
+  if (!isAnimating) {
+    isAnimating = true;
+    processSnapshotQueue();
+  }
+}
+
+function processSnapshotQueue() {
+  if (snapshotQueue.length === 0) {
+    isAnimating = false;
+    return;
+  }
+  const snapshot = snapshotQueue.shift();
+  updateView(snapshot);
+  if (snapshot.status === 'running') {
+    if (snapshot.episode !== lastEpisodeId) {
+      lastEpisodeId = snapshot.episode;
+      currentTrail = [];
+    }
+    currentTrail.push({ row: snapshot.position.row, col: snapshot.position.col });
+  } else if (snapshot.status === 'episode_complete') {
+    updateRollingStats(snapshot);
+    currentTrail = [];
+  }
+  if (snapshotQueue.length > 0) {
+    const delay = playbackDelayMs > 0 ? playbackDelayMs : DEFAULT_PLAYBACK_DELAY;
+    setTimeout(processSnapshotQueue, delay);
+  } else {
+    isAnimating = false;
+  }
+}
+
+function updateView(snapshot) {
+  lastSnapshot = snapshot;
+  statusEl.textContent = formatStatus(snapshot);
+  if (snapshot.config && typeof snapshot.config.stepDelayMs === 'number') {
+    playbackDelayMs = snapshot.config.stepDelayMs;
+  }
+  if (snapshot.config && typeof snapshot.config.algorithm === 'string') {
+    currentAlgorithm = snapshot.config.algorithm;
+  }
+  if (snapshot.config && typeof snapshot.config.gamma === 'number') {
+    currentGamma = snapshot.config.gamma;
+  }
+  if (snapshot.config && typeof snapshot.config.stepPenalty === 'number') {
+    currentStepPenalty = snapshot.config.stepPenalty;
+    const penaltySlider = form.querySelector('input[name="stepPenalty"]');
+    if (penaltySlider) {
+      penaltySlider.value = currentStepPenalty;
+      updateSliderOutput(penaltySlider);
+    }
+  }
+  const effectivePenalty =
+    typeof snapshot.appliedStepPenalty === 'number' ? snapshot.appliedStepPenalty : currentStepPenalty;
+  if (snapshot.config && typeof snapshot.config.goalCount === 'number') {
+    state.goalCount = snapshot.config.goalCount;
+    if (goalCountSlider) {
+      goalCountSlider.value = state.goalCount;
+      updateSliderOutput(goalCountSlider);
+    }
+  }
+  if (snapshot.config && typeof snapshot.config.goalInterval === 'number') {
+    state.goalInterval = snapshot.config.goalInterval;
+    if (goalIntervalSlider) {
+      goalIntervalSlider.value = state.goalInterval;
+      updateSliderOutput(goalIntervalSlider);
+    }
+  }
+  if (Array.isArray(snapshot.goals)) {
+    currentGoals = snapshot.goals.map((goal) => ({ ...goal }));
+  }
+  if (Array.isArray(snapshot.walls)) {
+    currentWalls = snapshot.walls.map((wall) => ({ ...wall }));
+    state.walls = currentWalls.map((wall) => ({ ...wall }));
+  }
+  if (Array.isArray(snapshot.slips)) {
+    state.slips = normalizeSlips(snapshot.slips);
+    currentSlips = state.slips.map((slip) => ({ ...slip }));
+  }
+  const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
+  const algoLabel = currentAlgorithm || 'montecarlo';
+  const goalInfo = snapshot.config.goalCount && snapshot.config.goalCount > 0
+    ? `${snapshot.config.goalCount} (interval ${snapshot.config.goalInterval || 0})`
+    : 'manual';
+  const rolling = getRollingStats();
+  renderMetrics(snapshot, {
+    effectivePenalty,
+    algoLabel,
+    delayLabel,
+    goalInfo,
+    rolling,
+  });
+  appendLog(snapshot);
+  if (snapshot.status === 'done' && snapshot.config) {
+    state.rows = snapshot.config.rows;
+    state.cols = snapshot.config.cols;
+    if (Array.isArray(snapshot.config.goals)) {
+      state.goals = snapshot.config.goals.map((goal) => ({ ...goal }));
+    }
+    if (Array.isArray(snapshot.config.walls)) {
+      state.walls = snapshot.config.walls.map((wall) => ({ ...wall }));
+    }
+    if (Array.isArray(snapshot.config.slips)) {
+      state.slips = normalizeSlips(snapshot.config.slips);
+    }
+    ensureGoalsWithinBounds();
+    syncSlidersFromState();
+    updateCanvasSize();
+  }
+  renderObstacleLists();
+  draw();
+}
+
+function updateRollingStats(snapshot) {
+  recentRewards.push(snapshot.episodeReward);
+  if (recentRewards.length > 50) {
+    recentRewards.shift();
+  }
+  const successAchieved = snapshot.successCount > lastSuccessCount ? 1 : 0;
+  recentSuccessFlags.push(successAchieved);
+  if (recentSuccessFlags.length > 50) {
+    recentSuccessFlags.shift();
+  }
+  lastSuccessCount = snapshot.successCount;
+}
+
+function averageOfWindow(values, windowSize) {
+  if (!values.length) return null;
+  const count = Math.min(values.length, windowSize);
+  let total = 0;
+  for (let i = values.length - count; i < values.length; i++) {
+    total += values[i];
+  }
+  return total / count;
+}
+
+function getRollingStats() {
+  if (!recentRewards.length) {
+    return null;
+  }
+  return {
+    reward10: averageOfWindow(recentRewards, 10),
+    reward50: averageOfWindow(recentRewards, 50),
+    success10: averageOfWindow(recentSuccessFlags, 10),
+    success50: averageOfWindow(recentSuccessFlags, 50),
+  };
+}
+
+function renderMetrics(snapshot, context) {
+  if (!metricsEl) {
+    return;
+  }
+  const completed = snapshot.episodesCompleted || 0;
+  const avgReward = completed > 0 ? snapshot.totalReward / completed : 0;
+  const avgSteps = completed > 0 ? snapshot.totalSteps / completed : 0;
+  const successRate = completed > 0 ? snapshot.successCount / completed : 0;
+  const rolling = context.rolling;
+  const epsilonDecayDisplay = typeof snapshot.config.epsilonDecay === 'number'
+    ? snapshot.config.epsilonDecay.toFixed(3)
+    : '--';
+
+  const rollingPills = rolling
+    ? [
+        { label: 'reward₁₀', value: rolling.reward10 },
+        { label: 'reward₅₀', value: rolling.reward50 },
+        { label: 'success₁₀', value: rolling.success10 },
+        { label: 'success₅₀', value: rolling.success50 },
+      ]
+        .filter((item) => item.value !== null && item.value !== undefined)
+        .map(
+          (item) =>
+            `<div class="metric-pill"><span>${item.label}</span><strong>${item.value.toFixed(2)}</strong></div>`
+        )
+        .join('')
+    : '';
+
+  metricsEl.innerHTML = `
+    <div class="metric-cards">
+      <div class="metric-card">
+        <span class="metric-label">Episode</span>
+        <span class="metric-value">${snapshot.episode}</span>
+        <span class="metric-sub">of ${snapshot.config.episodes}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Reward</span>
+        <span class="metric-value">${snapshot.episodeReward.toFixed(2)}</span>
+        <span class="metric-sub">avg ${avgReward.toFixed(2)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Success</span>
+        <span class="metric-value">${snapshot.successCount}</span>
+        <span class="metric-sub">rate ${(successRate * 100).toFixed(0)}%</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Steps</span>
+        <span class="metric-value">${snapshot.episodeSteps}</span>
+        <span class="metric-sub">avg ${avgSteps.toFixed(2)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Grid</span>
+        <span class="metric-value">${snapshot.config.rows}×${snapshot.config.cols}</span>
+        <span class="metric-sub">goals ${context.goalInfo}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Algorithm</span>
+        <span class="metric-value">${context.algoLabel}</span>
+        <span class="metric-sub">γ=${currentGamma.toFixed(2)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Penalty</span>
+        <span class="metric-value">${currentStepPenalty.toFixed(3)}</span>
+        <span class="metric-sub">eff ${context.effectivePenalty.toFixed(3)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Delay</span>
+        <span class="metric-value">${context.delayLabel}</span>
+        <span class="metric-sub">Eps decay ${epsilonDecayDisplay}</span>
+      </div>
+    </div>
+    ${rollingPills ? `<div class="metric-rolling">${rollingPills}</div>` : ''}
+  `;
+}
+
+function appendLog(snapshot) {
+  if (!logEl) {
+    return;
+  }
+  if (snapshot.status === 'episode_complete') {
+    logEntries.unshift({
+      type: 'episode',
+      episode: snapshot.episode,
+      reward: snapshot.episodeReward,
+      steps: snapshot.episodeSteps,
+      successCount: snapshot.successCount,
+      text: `Episode ${snapshot.episode}: reward ${snapshot.episodeReward.toFixed(2)} steps ${snapshot.episodeSteps}`,
+    });
+  }
+  if (snapshot.status === 'done') {
+    logEntries.unshift({
+      type: 'done',
+      text: `Training complete. Total reward ${snapshot.totalReward.toFixed(2)} in ${snapshot.totalSteps} steps.`,
+    });
+  }
+  renderEventLog();
+}
+
+function renderEventLog() {
+  if (!logEl) {
+    return;
+  }
+  const showEpisodes = logFilterEpisodes ? logFilterEpisodes.checked : true;
+  const showSuccess = logFilterSuccess ? logFilterSuccess.checked : true;
+  const showGoals = logFilterGoals ? logFilterGoals.checked : true;
+
+  logEl.innerHTML = '';
+  logEntries
+    .filter((entry) => {
+      if (entry.type === 'episode') {
+        if (!showEpisodes) {
+          return false;
+        }
+        const succeeded = entry.successCount > 0;
+        if (!showSuccess && succeeded) {
+          return false;
+        }
+      }
+      if (entry.type === 'goal') {
+        return showGoals;
+      }
+      return true;
+    })
+    .slice(0, 200)
+    .forEach((entry) => {
+      const node = document.createElement('div');
+      node.className = 'log-entry';
+      node.textContent = entry.text;
+      logEl.appendChild(node);
+    });
+}
+
+function renderObstacleLists() {
+  if (wallList) {
+    wallList.innerHTML = '';
+    if (state.walls.length > 0) {
+      const clearItem = document.createElement('li');
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.textContent = 'clear all';
+      clearBtn.addEventListener('click', () => {
+        clearWalls();
+        renderObstacleLists();
+        draw();
+      });
+      clearItem.append('walls ', clearBtn);
+      wallList.appendChild(clearItem);
+    }
+    if (state.walls.length === 0) {
+      const emptyItem = document.createElement('li');
+      emptyItem.className = 'obstacle-empty';
+      emptyItem.textContent = 'No walls yet — choose Wall tool and click the grid.';
+      wallList.appendChild(emptyItem);
+    }
+    state.walls.forEach((wall, idx) => {
+      const item = document.createElement('li');
+      const label = document.createElement('span');
+      label.className = 'obstacle-chip';
+      label.textContent = `(${wall.row}, ${wall.col})`;
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'remove';
+      removeBtn.addEventListener('click', () => {
+        state.walls.splice(idx, 1);
+        currentWalls = state.walls.map((w) => ({ ...w }));
+        renderObstacleLists();
+        draw();
+      });
+      item.append(label, removeBtn);
+      wallList.appendChild(item);
+    });
+  }
+  if (slipList) {
+    slipList.innerHTML = '';
+    if (state.slips.length > 0) {
+      const clearItem = document.createElement('li');
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.textContent = 'clear all';
+      clearBtn.addEventListener('click', () => {
+        clearSlips();
+        renderObstacleLists();
+        draw();
+      });
+      clearItem.append('slips ', clearBtn);
+      slipList.appendChild(clearItem);
+    }
+    if (state.slips.length === 0) {
+      const emptyItem = document.createElement('li');
+      emptyItem.className = 'obstacle-empty';
+      emptyItem.textContent = 'No slip tiles yet — choose Slip tool and click the grid.';
+      slipList.appendChild(emptyItem);
+    }
+    state.slips.forEach((slip, idx) => {
+      const item = document.createElement('li');
+      const label = document.createElement('span');
+      label.className = 'obstacle-chip';
+      label.textContent = `(${slip.row}, ${slip.col})`;
+      const probValue = slip.probability ?? slip.Probability;
+      const probLabel = typeof probValue === 'number' ? probValue.toFixed(2) : '0.00';
+      const badge = document.createElement('span');
+      badge.className = 'obstacle-badge';
+      badge.textContent = `p=${probLabel}`;
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'remove';
+      removeBtn.addEventListener('click', () => {
+        state.slips.splice(idx, 1);
+        state.slips = normalizeSlips(state.slips);
+        currentSlips = state.slips.map((s) => ({ ...s }));
+        renderObstacleLists();
+        draw();
+      });
+      item.append(label, badge, removeBtn);
+      slipList.appendChild(item);
+    });
+  }
+}
+
+function formatStatus(snapshot) {
+  switch (snapshot.status) {
+    case 'running':
+      return `Running episode ${snapshot.episode}`;
+    case 'episode_complete':
+      return `Episode ${snapshot.episode} complete`;
+    case 'done':
+      return 'Training complete';
+    case 'cancelled':
+      return 'Training cancelled';
+    default:
+      return `Status: ${snapshot.status}`;
+  }
+}
+
+function draw() {
+  const snapshot = lastSnapshot || createPlaceholderSnapshot();
+  if (currentView === 'heatmap') {
+    drawHeatmap(snapshot.valueMap);
+  } else {
+    drawGrid(snapshot);
+  }
+}
+
+function createPlaceholderSnapshot() {
+  const valueMap = Array.from({ length: state.rows }, () => Array(state.cols).fill(0));
+  return {
+    valueMap,
+    position: { row: state.rows - 1, col: 0 },
+  };
+}
+
+function drawGrid(snapshot) {
+  const rows = snapshot.valueMap.length;
+  const cols = snapshot.valueMap[0].length;
+  const cellWidth = canvas.width / cols;
+  const cellHeight = canvas.height / rows;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      ctx.strokeStyle = '#ccc';
+      ctx.strokeRect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+    }
+  }
+  const start = { row: rows - 1, col: 0 };
+  drawCell(start, cellWidth, cellHeight, '#0d6efd');
+  drawWalls(cellWidth, cellHeight);
+  drawSlipTiles(cellWidth, cellHeight);
+  drawGoals(cellWidth, cellHeight);
+  drawTrail(cellWidth, cellHeight);
+  drawHover(cellWidth, cellHeight);
+  drawCell(snapshot.position, cellWidth, cellHeight, '#d63384');
+}
+
+function drawCell(pos, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(pos.col * w + 2, pos.row * h + 2, w - 4, h - 4);
+}
+
+function drawTrail(cellWidth, cellHeight) {
+  if (!currentTrail.length) return;
+  const total = currentTrail.length;
+  currentTrail.forEach((pos, idx) => {
+    const alpha = 0.2 + (idx / total) * 0.6;
+    ctx.fillStyle = `rgba(13, 110, 253, ${alpha.toFixed(3)})`;
+    ctx.fillRect(pos.col * cellWidth + 4, pos.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
+  });
+}
+
+function drawGoals(cellWidth, cellHeight) {
+  if (!currentGoals || currentGoals.length === 0) {
+    return;
+  }
+  currentGoals.forEach((goal) => {
+    ctx.fillStyle = '#198754';
+    ctx.fillRect(goal.col * cellWidth + 4, goal.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
+  });
+}
+
+function drawWalls(cellWidth, cellHeight) {
+  if (!currentWalls || currentWalls.length === 0) {
+    return;
+  }
+  currentWalls.forEach((wall) => {
+    ctx.fillStyle = '#495057';
+    ctx.fillRect(wall.col * cellWidth + 2, wall.row * cellHeight + 2, cellWidth - 4, cellHeight - 4);
+  });
+}
+
+function drawSlipTiles(cellWidth, cellHeight) {
+  if (!currentSlips || currentSlips.length === 0) {
+    return;
+  }
+  currentSlips.forEach((slip) => {
+    ctx.fillStyle = 'rgba(253, 126, 20, 0.6)';
+    ctx.fillRect(slip.col * cellWidth + 4, slip.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
+  });
+}
+
+function drawHover(cellWidth, cellHeight) {
+  if (!hoverCell || currentTool === 'none') {
+    return;
+  }
+  const { row, col } = hoverCell;
+  const x = col * cellWidth;
+  const y = row * cellHeight;
+  ctx.save();
+  switch (currentTool) {
+    case 'wall':
+      ctx.strokeStyle = '#343a40';
+      ctx.fillStyle = 'rgba(52, 58, 64, 0.25)';
+      break;
+    case 'slip':
+      ctx.strokeStyle = '#fd7e14';
+      ctx.fillStyle = 'rgba(253, 126, 20, 0.25)';
+      break;
+    case 'erase':
+      ctx.strokeStyle = '#d63384';
+      ctx.fillStyle = 'rgba(214, 51, 132, 0.2)';
+      break;
+    default:
+      ctx.restore();
+      return;
+  }
+  ctx.lineWidth = 2;
+  ctx.fillRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+  ctx.strokeRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+  ctx.restore();
+}
+
+function drawHeatmap(valueMap) {
+  const rows = valueMap.length;
+  const cols = valueMap[0].length;
+  const cellWidth = canvas.width / cols;
+  const cellHeight = canvas.height / rows;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let max = -Infinity;
+  let min = Infinity;
+  for (const row of valueMap) {
+    for (const v of row) {
+      if (v > max) max = v;
+      if (v < min) min = v;
+    }
+  }
+  const span = max - min || 1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t = (valueMap[r][c] - min) / span;
+      ctx.fillStyle = heatColor(t);
+      ctx.fillRect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+    }
+  }
+}
+
+function heatColor(t) {
+  const r = Math.floor(255 * t);
+  const g = Math.floor(255 * (1 - t));
+  return `rgba(${r}, ${g}, 80, 0.8)`;
+}
+
+function serializeForm(form) {
+  const data = new FormData(form);
+  return {
+    episodes: Number(data.get('episodes')),
+    seed: Number(data.get('seed')),
+    epsilon: Number(data.get('epsilon')),
+    epsilonMin: 0.05,
+    epsilonDecay: 0.998,
+    alpha: Number(data.get('alpha')),
+    gamma: Number(data.get('gamma')),
+    rows: state.rows,
+    cols: state.cols,
+    algorithm: String(data.get('algorithm') || 'montecarlo'),
+    stepDelayMs: Number(data.get('stepDelayMs')),
+    stepPenalty: Number(data.get('stepPenalty')),
+    goalCount: state.goalCount,
+    goalInterval: state.goalInterval,
+    goals: state.goalCount > 0 ? [] : state.goals.map((goal) => ({ ...goal })),
+    walls: state.walls.map((wall) => ({ ...wall })),
+    slips: state.slips.map((slip) => ({ row: slip.row, col: slip.col, probability: slip.probability })),
+  };
+}
+
+function attachEventListeners() {
+  const stopBtn = document.getElementById('stopBtn');
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!wasmReady) {
+      statusEl.textContent = 'Loading WASM...';
+      return;
+    }
+    const cfg = serializeForm(form);
+    playbackDelayMs = cfg.stepDelayMs || 0;
+    currentAlgorithm = cfg.algorithm || 'montecarlo';
+    currentGamma = typeof cfg.gamma === 'number' && !Number.isNaN(cfg.gamma) ? cfg.gamma : currentGamma;
+    if (Array.isArray(cfg.goals)) {
+      currentGoals = cfg.goals;
+    }
+    console.log('[form] submitted config', cfg, 'playbackDelay', playbackDelayMs);
+    const config = JSON.stringify(cfg);
+    resetAnimationState();
+    window.tinyrlStartTraining(config);
+    statusEl.textContent = 'Training...';
+  });
+  stopBtn.addEventListener('click', () => {
+    if (wasmReady) {
+      window.tinyrlStopTraining();
+      statusEl.textContent = 'Stopped';
+      resetAnimationState();
+    }
+  });
+  document.querySelectorAll('.view-toggle button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document
+        .querySelectorAll('.view-toggle button')
+        .forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentView = btn.dataset.view;
+      draw();
+    });
+  });
+  resizeHandle.addEventListener('mousedown', startResize);
+  toolButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setTool(btn.dataset.tool || 'none');
+    });
+  });
+  if (slipProbSlider && slipProbValue) {
+    slipProbSlider.addEventListener('input', () => {
+      slipProbValue.textContent = Number(slipProbSlider.value).toFixed(2);
+    });
+  }
+  if (addWallBtn) {
+    addWallBtn.addEventListener('click', () => {
+      const row = Number(wallRowInput.value);
+      const col = Number(wallColInput.value);
+      if (Number.isNaN(row) || Number.isNaN(col)) {
+        return;
+      }
+      const exists = state.walls.some((wall) => wall.row === row && wall.col === col);
+      if (!exists) {
+        state.walls.push({ row, col });
+        removeSlip(row, col);
+        ensureGoalsWithinBounds();
+        renderObstacleLists();
+        draw();
+      }
+    });
+  }
+  if (addSlipBtn) {
+    addSlipBtn.addEventListener('click', () => {
+      const row = Number(slipRowInput.value);
+      const col = Number(slipColInput.value);
+      let probability = Number(slipProbInput.value);
+      if (Number.isNaN(row) || Number.isNaN(col) || Number.isNaN(probability)) {
+        return;
+      }
+      if (probability < 0) probability = 0;
+      if (probability > 1) probability = 1;
+      placeSlip(row, col, probability);
+      renderObstacleLists();
+      draw();
+    });
+  }
+
+  if (canvas) {
+    canvas.addEventListener('click', (event) => {
+      if (currentTool === 'none') {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const pointerX = (event.clientX - rect.left) * scaleX;
+      const pointerY = (event.clientY - rect.top) * scaleY;
+      const cellWidth = canvas.width / state.cols;
+      const cellHeight = canvas.height / state.rows;
+      const col = Math.floor(pointerX / cellWidth);
+      const row = Math.floor(pointerY / cellHeight);
+      if (col < 0 || col >= state.cols || row < 0 || row >= state.rows) {
+        return;
+      }
+      handleCanvasObstacleClick(row, col);
+    });
+
+    canvas.addEventListener('mousemove', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const pointerX = (event.clientX - rect.left) * scaleX;
+      const pointerY = (event.clientY - rect.top) * scaleY;
+      const cellWidth = canvas.width / state.cols;
+      const cellHeight = canvas.height / state.rows;
+      const col = Math.floor(pointerX / cellWidth);
+      const row = Math.floor(pointerY / cellHeight);
+      if (col < 0 || col >= state.cols || row < 0 || row >= state.rows) {
+        if (hoverCell !== null) {
+          hoverCell = null;
+          draw();
+        }
+        return;
+      }
+      if (!hoverCell || hoverCell.row !== row || hoverCell.col !== col) {
+        hoverCell = { row, col };
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      if (hoverCell) {
+        hoverCell = null;
+        draw();
+      }
+    });
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (event.target && event.target.tagName === 'INPUT') {
+      return;
+    }
+    switch (event.key.toLowerCase()) {
+      case 'n':
+        setTool('none');
+        break;
+      case 'w':
+        setTool('wall');
+        break;
+      case 's':
+        setTool('slip');
+        break;
+      case 'e':
+        setTool('erase');
+        break;
+      default:
+        break;
+    }
+  });
+
+  if (logFilterEpisodes) {
+    logFilterEpisodes.addEventListener('change', renderEventLog);
+  }
+  if (logFilterSuccess) {
+    logFilterSuccess.addEventListener('change', renderEventLog);
+  }
+  if (logFilterGoals) {
+    logFilterGoals.addEventListener('change', renderEventLog);
+  }
+  if (clearLogBtn) {
+    clearLogBtn.addEventListener('click', () => {
+      logEntries.length = 0;
+      renderEventLog();
+    });
+  }
+}
+
+function setTool(tool) {
+  currentTool = tool;
+  toolButtons.forEach((btn) => {
+    const isActive = (btn.dataset.tool || 'none') === tool;
+    btn.classList.toggle('active', isActive);
+  });
+  if (slipProbSlider) {
+    const enabled = tool === 'slip';
+    slipProbSlider.disabled = !enabled;
+    if (slipProbLabelEl) {
+      slipProbLabelEl.classList.toggle('disabled', !enabled);
+    }
+  }
+  if (tool === 'none' && hoverCell) {
+    hoverCell = null;
+  }
+  draw();
+}
+
+function handleCanvasObstacleClick(row, col) {
+  switch (currentTool) {
+    case 'wall':
+      toggleWall(row, col);
+      break;
+    case 'slip':
+      placeSlip(row, col, getCurrentSlipProbability());
+      break;
+    case 'erase':
+      eraseObstacle(row, col);
+      break;
+    default:
+      return;
+  }
+  renderObstacleLists();
+  draw();
+}
+
+function toggleWall(row, col) {
+  const index = state.walls.findIndex((wall) => wall.row === row && wall.col === col);
+  if (index >= 0) {
+    state.walls.splice(index, 1);
+  } else {
+    state.walls.push({ row, col });
+    removeSlip(row, col);
+  }
+  currentWalls = state.walls.map((wall) => ({ ...wall }));
+}
+
+function placeSlip(row, col, probability) {
+  if (probability <= 0) {
+    removeSlip(row, col);
+    return;
+  }
+  const payload = { row, col, probability };
+  const index = state.slips.findIndex((slip) => slip.row === row && slip.col === col);
+  if (index >= 0) {
+    state.slips[index] = payload;
+  } else {
+    state.slips.push(payload);
+  }
+  removeWall(row, col);
+  state.slips = normalizeSlips(state.slips);
+  currentSlips = state.slips.map((slip) => ({ ...slip }));
+}
+
+function eraseObstacle(row, col) {
+  removeWall(row, col);
+  removeSlip(row, col);
+}
+
+function removeWall(row, col) {
+  const index = state.walls.findIndex((wall) => wall.row === row && wall.col === col);
+  if (index >= 0) {
+    state.walls.splice(index, 1);
+    currentWalls = state.walls.map((wall) => ({ ...wall }));
+  }
+}
+
+function removeSlip(row, col) {
+  const index = state.slips.findIndex((slip) => slip.row === row && slip.col === col);
+  if (index >= 0) {
+    state.slips.splice(index, 1);
+    state.slips = normalizeSlips(state.slips);
+    currentSlips = state.slips.map((slip) => ({ ...slip }));
+  }
+}
+
+function getCurrentSlipProbability() {
+  if (!slipProbSlider) {
+    return 0.5;
+  }
+  let value = Number(slipProbSlider.value);
+  if (Number.isNaN(value)) {
+    value = 0.5;
+  }
+  if (value < 0) value = 0;
+  if (value > 1) value = 1;
+  return value;
+}
+
+function clearWalls() {
+  if (state.walls.length === 0) {
+    return;
+  }
+  state.walls = [];
+  currentWalls = [];
+}
+
+function clearSlips() {
+  if (state.slips.length === 0) {
+    return;
+  }
+  state.slips = [];
+  currentSlips = [];
+}
+
+function normalizeSlips(slips) {
+  if (!Array.isArray(slips)) {
+    return [];
+  }
+  return slips.map((slip) => {
+    const probabilityRaw = typeof slip.probability === 'number' ? slip.probability : Number(slip.Probability ?? slip.prob ?? 0);
+    const probability = clamp(Number.isNaN(probabilityRaw) ? 0 : probabilityRaw, 0, 1);
+    return { row: slip.row, col: slip.col, probability };
+  });
+}
+
+function resetAnimationState() {
+  snapshotQueue = [];
+  isAnimating = false;
+  currentTrail = [];
+  lastEpisodeId = 0;
+  currentGoals = state.goals.map((goal) => ({ ...goal }));
+  currentWalls = state.walls.map((wall) => ({ ...wall }));
+  currentSlips = state.slips.map((slip) => ({ ...slip }));
+  renderObstacleLists();
+}
+
+(async function init() {
+  await loadWasm();
+  registerHandlers();
+  initializeSliders();
+  ensureGoalsWithinBounds();
+  updateCanvasSize();
+  attachEventListeners();
+  setTool(currentTool);
+  draw();
+})();
+
+================
+File: web/index.html
+================
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>tiny-rl-go Playground</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <h1>tiny-rl-go</h1>
+        <form id="controlForm">
+          <details class="control-section" open>
+            <summary>Training</summary>
+            <div class="control-grid">
+              <label class="slider-label">
+                <span class="slider-title">Algorithm</span>
+                <span class="slider-help">Learning strategy for the agent.</span>
+                <select name="algorithm">
+                  <option value="montecarlo" selected>Monte Carlo</option>
+                  <option value="q-learning">Q-Learning</option>
+                  <option value="sarsa">SARSA</option>
+                </select>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Episodes</span>
+                <span class="slider-help">Number of training episodes per run.</span>
+                <div class="slider-row">
+                  <input type="range" name="episodes" min="1" max="300" value="100" data-output-target="episodesOutput" />
+                  <span class="slider-output" id="episodesOutput">100</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Seed</span>
+                <span class="slider-help">Deterministic seed for reproducible runs.</span>
+                <div class="slider-row">
+                  <input type="range" name="seed" min="0" max="1000" value="7" data-output-target="seedOutput" />
+                  <span class="slider-output" id="seedOutput">7</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Step Delay (ms)</span>
+                <span class="slider-help">Playback delay between rendered steps.</span>
+                <div class="slider-row">
+                  <input type="range" name="stepDelayMs" min="0" max="100" step="5" value="60" data-output-target="delayOutput" />
+                  <span class="slider-output" id="delayOutput">60</span>
+                </div>
+              </label>
+            </div>
+          </details>
+
+          <details class="control-section" open>
+            <summary>Learning Parameters</summary>
+            <div class="control-grid">
+              <label class="slider-label">
+                <span class="slider-title">Epsilon</span>
+                <span class="slider-help">Exploration rate (probability of random action).</span>
+                <div class="slider-row">
+                  <input type="range" name="epsilon" min="0" max="1" step="0.01" value="0.5" data-output-target="epsilonOutput" />
+                  <span class="slider-output" id="epsilonOutput">0.50</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Alpha</span>
+                <span class="slider-help">Learning rate for value/Q updates.</span>
+                <div class="slider-row">
+                  <input type="range" name="alpha" min="0" max="1" step="0.01" value="0.2" data-output-target="alphaOutput" />
+                  <span class="slider-output" id="alphaOutput">0.20</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Gamma</span>
+                <span class="slider-help">Discount factor for future rewards.</span>
+                <div class="slider-row">
+                  <input type="range" name="gamma" min="0" max="1" step="0.01" value="0.9" data-output-target="gammaOutput" />
+                  <span class="slider-output" id="gammaOutput">0.90</span>
+                </div>
+              </label>
+            </div>
+          </details>
+
+          <details class="control-section" open>
+            <summary>Environment</summary>
+            <div class="control-grid">
+              <label class="slider-label">
+                <span class="slider-title">Rows</span>
+                <span class="slider-help">Number of grid rows.</span>
+                <div class="slider-row">
+                  <input type="range" name="rows" min="1" max="20" value="4" data-output-target="rowsOutput" />
+                  <span class="slider-output" id="rowsOutput">4</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Columns</span>
+                <span class="slider-help">Number of grid columns.</span>
+                <div class="slider-row">
+                  <input type="range" name="cols" min="1" max="20" value="4" data-output-target="colsOutput" />
+                  <span class="slider-output" id="colsOutput">4</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Step Penalty</span>
+                <span class="slider-help">Reward deducted each move (encourages shorter paths).</span>
+                <div class="slider-row">
+                  <input type="range" name="stepPenalty" min="0" max="0.1" step="0.005" value="0.02" data-output-target="penaltyOutput" />
+                  <span class="slider-output" id="penaltyOutput">0.02</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Goal Count</span>
+                <span class="slider-help">Number of goals auto-placed before training starts.</span>
+                <div class="slider-row">
+                  <input type="range" name="goalCount" min="0" max="10" step="1" value="2" data-output-target="goalCountOutput" />
+                  <span class="slider-output" id="goalCountOutput">2</span>
+                </div>
+              </label>
+              <label class="slider-label">
+                <span class="slider-title">Goal Interval</span>
+                <span class="slider-help">Episodes between goal reshuffles (0 keeps layout).</span>
+                <div class="slider-row">
+                  <input type="range" name="goalInterval" min="0" max="10" step="1" value="0" data-output-target="goalIntervalOutput" />
+                  <span class="slider-output" id="goalIntervalOutput">0</span>
+                </div>
+              </label>
+            </div>
+          </details>
+
+          <details class="control-section" open>
+            <summary>Obstacles</summary>
+            <div class="slider-help">Maintain walls and slip tiles.</div>
+            <div class="obstacle-controls">
+              <div>
+                <strong>Walls</strong>
+                <div class="obstacle-row">
+                  <input type="number" id="wallRow" min="0" value="0" />
+                  <input type="number" id="wallCol" min="0" value="0" />
+                  <button type="button" id="addWallBtn">Add Wall</button>
+                </div>
+                <ul id="wallList" class="obstacle-list"></ul>
+              </div>
+              <div>
+                <strong>Slip Tiles</strong>
+                <div class="obstacle-row">
+                  <input type="number" id="slipRow" min="0" value="0" />
+                  <input type="number" id="slipCol" min="0" value="0" />
+                  <input type="number" id="slipProb" min="0" max="1" step="0.05" value="0.5" />
+                  <button type="button" id="addSlipBtn">Add Slip</button>
+                </div>
+                <ul id="slipList" class="obstacle-list"></ul>
+              </div>
+            </div>
+          </details>
+          <div class="buttons">
+            <button type="submit">Start Training</button>
+            <button type="button" id="stopBtn">Stop</button>
+          </div>
+        </form>
+        <div class="status" id="status"></div>
+      </aside>
+      <main class="main">
+        <div class="canvas-toolbar">
+          <div class="obstacle-toolbar" id="obstacleToolbar">
+            <button type="button" data-tool="none" class="tool-button active">Navigate</button>
+            <button type="button" data-tool="wall" class="tool-button">Place Wall</button>
+            <button type="button" data-tool="slip" class="tool-button">Place Slip</button>
+            <button type="button" data-tool="erase" class="tool-button">Erase</button>
+            <label class="slip-probability" id="slipProbLabel">Slip p
+              <input type="range" id="slipProbSlider" min="0" max="1" step="0.05" value="0.5" />
+              <span id="slipProbValue">0.50</span>
+            </label>
+          </div>
+          <div class="view-toggle">
+            <button type="button" data-view="path" class="active">Path</button>
+            <button type="button" data-view="heatmap">Heatmap</button>
+          </div>
+        </div>
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="gridCanvas" width="400" height="400"></canvas>
+          <div class="resize-handle" id="resizeHandle"></div>
+        </div>
+        <p class="canvas-instructions">Use the toolbar (shortcuts: N navigate, W wall, S slip, E erase) and drag the corner to resize the grid.</p>
+      </main>
+      <section class="metrics" id="metrics">
+        <h2>Metrics</h2>
+        <div id="metricSummary">Episode and reward stats will appear here.</div>
+        <details id="logPanel" class="log-panel" open>
+          <summary>Event Log</summary>
+          <div class="log-controls">
+            <label><input type="checkbox" id="logFilterEpisodes" checked /> Episodes</label>
+            <label><input type="checkbox" id="logFilterSuccess" checked /> Successes</label>
+            <label><input type="checkbox" id="logFilterGoals" checked /> Goals</label>
+            <button type="button" id="clearLogBtn">Clear</button>
+          </div>
+          <div id="eventLog" class="log-entries"></div>
+        </details>
+      </section>
+    </div>
+    <script src="wasm_exec.js"></script>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
+
+
+
+
+================================================================
+End of Codebase
+================================================================

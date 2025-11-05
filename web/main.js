@@ -1,5 +1,6 @@
 const go = new Go();
 let wasmReady = false;
+let wasmLoadInProgress = false;
 let currentView = 'path';
 let lastSnapshot = null;
 const DEFAULT_PLAYBACK_DELAY = 60;
@@ -18,11 +19,18 @@ let hoverCell = null;
 let recentRewards = [];
 let recentSuccessFlags = [];
 let lastSuccessCount = 0;
+const logEntries = [];
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
 const metricsEl = document.getElementById('metricSummary');
 const logEl = document.getElementById('eventLog');
+const logFilterEpisodes = document.getElementById('logFilterEpisodes');
+const logFilterSuccess = document.getElementById('logFilterSuccess');
+const logFilterGoals = document.getElementById('logFilterGoals');
+const clearLogBtn = document.getElementById('clearLogBtn');
 const canvasContainer = document.getElementById('canvasContainer');
 const resizeHandle = document.getElementById('resizeHandle');
 const form = document.getElementById('controlForm');
@@ -45,6 +53,14 @@ const toolButtons = obstacleToolbar ? Array.from(obstacleToolbar.querySelectorAl
 const slipProbSlider = document.getElementById('slipProbSlider');
 const slipProbValue = document.getElementById('slipProbValue');
 const slipProbLabelEl = document.getElementById('slipProbLabel');
+const wasmRetryBtn = document.createElement('button');
+wasmRetryBtn.type = 'button';
+wasmRetryBtn.className = 'status-retry';
+wasmRetryBtn.textContent = 'Retry engine load';
+wasmRetryBtn.hidden = true;
+wasmRetryBtn.addEventListener('click', () => {
+  loadWasm();
+});
 
 const CELL_SIZE = 24;
 const MIN_ROWS = 1;
@@ -90,19 +106,82 @@ function syncSlidersFromState() {
   updateSliderOutput(colSlider);
 }
 
+function syncObstacleInputConstraints() {
+  const maxRow = Math.max(0, state.rows - 1);
+  const maxCol = Math.max(0, state.cols - 1);
+  [wallRowInput, slipRowInput].forEach((input) => {
+    if (!input) return;
+    input.max = maxRow;
+    if (Number(input.value) > maxRow) {
+      input.value = maxRow;
+    }
+    input.setCustomValidity('');
+  });
+  [wallColInput, slipColInput].forEach((input) => {
+    if (!input) return;
+    input.max = maxCol;
+    if (Number(input.value) > maxCol) {
+      input.value = maxCol;
+    }
+    input.setCustomValidity('');
+  });
+}
+
+function validateObstacleCoordinates(rowInput, colInput) {
+  if (!rowInput || !colInput) {
+    return null;
+  }
+  const maxRow = Math.max(0, state.rows - 1);
+  const maxCol = Math.max(0, state.cols - 1);
+  const row = Number(rowInput.value);
+  const col = Number(colInput.value);
+  let valid = true;
+  if (Number.isNaN(row) || row < 0 || row > maxRow) {
+    rowInput.setCustomValidity(`Row must be between 0 and ${maxRow}`);
+    rowInput.reportValidity();
+    valid = false;
+  } else {
+    rowInput.setCustomValidity('');
+  }
+  if (Number.isNaN(col) || col < 0 || col > maxCol) {
+    colInput.setCustomValidity(`Column must be between 0 and ${maxCol}`);
+    colInput.reportValidity();
+    valid = false;
+  } else {
+    colInput.setCustomValidity('');
+  }
+  if (!valid) {
+    return null;
+  }
+  const normalizedRow = Math.round(row);
+  const normalizedCol = Math.round(col);
+  if (rowInput.value !== String(normalizedRow)) {
+    rowInput.value = normalizedRow;
+  }
+  if (colInput.value !== String(normalizedCol)) {
+    colInput.value = normalizedCol;
+  }
+  return { row: normalizedRow, col: normalizedCol };
+}
+
 function updateSliderOutput(input) {
   const targetId = input.dataset.outputTarget;
   if (!targetId) return;
   const output = document.getElementById(targetId);
   if (!output) return;
   const value = Number(input.value);
+  let formatted;
   if (input.name === 'epsilon' || input.name === 'alpha' || input.name === 'gamma') {
-    output.textContent = value.toFixed(2);
+    formatted = value.toFixed(2);
   } else if (input.name === 'stepPenalty') {
-    output.textContent = value.toFixed(3);
+    formatted = value.toFixed(3);
   } else {
-    output.textContent = Math.round(value);
+    formatted = Math.round(value).toString();
   }
+  if (output instanceof HTMLOutputElement) {
+    output.value = formatted;
+  }
+  output.textContent = formatted;
 }
 
 function initializeSliders() {
@@ -114,9 +193,14 @@ function initializeSliders() {
     });
   });
   syncSlidersFromState();
+  syncObstacleInputConstraints();
   renderObstacleLists();
   if (slipProbSlider && slipProbValue) {
-    slipProbValue.textContent = Number(slipProbSlider.value).toFixed(2);
+    const display = Number(slipProbSlider.value).toFixed(2);
+    if (slipProbValue instanceof HTMLOutputElement) {
+      slipProbValue.value = display;
+    }
+    slipProbValue.textContent = display;
   }
 }
 
@@ -126,6 +210,7 @@ function handleSliderChange(name, value) {
       state.rows = clamp(Math.round(value), MIN_ROWS, MAX_ROWS);
       ensureGoalsWithinBounds();
       updateCanvasSize();
+      syncObstacleInputConstraints();
       resetAnimationState();
       draw();
       break;
@@ -133,6 +218,7 @@ function handleSliderChange(name, value) {
       state.cols = clamp(Math.round(value), MIN_COLS, MAX_COLS);
       ensureGoalsWithinBounds();
       updateCanvasSize();
+      syncObstacleInputConstraints();
       resetAnimationState();
       draw();
       break;
@@ -165,6 +251,7 @@ function ensureGoalsWithinBounds() {
   currentWalls = state.walls.map((wall) => ({ ...wall }));
   state.slips = normalizeSlips(state.slips.filter((slip) => slip.row >= 0 && slip.row < state.rows && slip.col >= 0 && slip.col < state.cols));
   currentSlips = state.slips.map((slip) => ({ ...slip }));
+  syncObstacleInputConstraints();
   renderObstacleLists();
 }
 
@@ -193,6 +280,7 @@ function onResizeMove(event) {
     state.rows = newRows;
     ensureGoalsWithinBounds();
     syncSlidersFromState();
+    syncObstacleInputConstraints();
     updateCanvasSize();
     resetAnimationState();
     draw();
@@ -207,13 +295,72 @@ function stopResize() {
   document.removeEventListener('mouseup', stopResize);
 }
 
+function setStatus(message) {
+  if (!statusEl) {
+    return;
+  }
+  statusEl.textContent = message;
+}
+
+function setStartButtonEnabled(enabled) {
+  if (!startBtn) {
+    return;
+  }
+  startBtn.disabled = !enabled;
+  if (enabled) {
+    startBtn.removeAttribute('aria-disabled');
+  } else {
+    startBtn.setAttribute('aria-disabled', 'true');
+  }
+}
+
+function hideWasmRetryButton() {
+  if (!statusEl) {
+    return;
+  }
+  if (statusEl.contains(wasmRetryBtn)) {
+    statusEl.removeChild(wasmRetryBtn);
+  }
+  wasmRetryBtn.hidden = true;
+}
+
+function showWasmRetryButton() {
+  if (!statusEl) {
+    return;
+  }
+  if (!statusEl.contains(wasmRetryBtn)) {
+    statusEl.appendChild(wasmRetryBtn);
+  }
+  wasmRetryBtn.hidden = false;
+}
+
 async function loadWasm() {
-  if (wasmReady) return;
-  const wasmResponse = await fetch('tinyrl.wasm');
-  const wasmBytes = await wasmResponse.arrayBuffer();
-  const result = await WebAssembly.instantiate(wasmBytes, go.importObject);
-  go.run(result.instance);
-  wasmReady = true;
+  if (wasmReady || wasmLoadInProgress) {
+    return;
+  }
+  wasmLoadInProgress = true;
+  hideWasmRetryButton();
+  setStartButtonEnabled(false);
+  setStatus('Loading reinforcement learning engine...');
+  try {
+    const wasmResponse = await fetch('tinyrl.wasm');
+    if (!wasmResponse.ok) {
+      throw new Error(`HTTP ${wasmResponse.status}`);
+    }
+    const wasmBytes = await wasmResponse.arrayBuffer();
+    const result = await WebAssembly.instantiate(wasmBytes, go.importObject);
+    go.run(result.instance);
+    wasmReady = true;
+    setStatus('Engine ready. Configure parameters and start training.');
+    setStartButtonEnabled(true);
+  } catch (error) {
+    console.error('Failed to load WASM', error);
+    wasmReady = false;
+    setStatus('Engine failed to load. Please check your connection and retry.');
+    showWasmRetryButton();
+  } finally {
+    wasmLoadInProgress = false;
+  }
 }
 
 function registerHandlers() {
@@ -255,7 +402,11 @@ function processSnapshotQueue() {
 
 function updateView(snapshot) {
   lastSnapshot = snapshot;
-  statusEl.textContent = formatStatus(snapshot);
+  hideWasmRetryButton();
+  setStatus(formatStatus(snapshot));
+  if (snapshot.status === 'done' || snapshot.status === 'error' || snapshot.status === 'cancelled' || snapshot.status === 'stopped') {
+    setStartButtonEnabled(true);
+  }
   if (snapshot.config && typeof snapshot.config.stepDelayMs === 'number') {
     playbackDelayMs = snapshot.config.stepDelayMs;
   }
@@ -445,16 +596,60 @@ function renderMetrics(snapshot, context) {
 }
 
 function appendLog(snapshot) {
+  if (!logEl) {
+    return;
+  }
   if (snapshot.status === 'episode_complete') {
-    const entry = document.createElement('div');
-    entry.textContent = `Episode ${snapshot.episode}: reward ${snapshot.episodeReward.toFixed(2)} steps ${snapshot.episodeSteps}`;
-    logEl.prepend(entry);
+    logEntries.unshift({
+      type: 'episode',
+      episode: snapshot.episode,
+      reward: snapshot.episodeReward,
+      steps: snapshot.episodeSteps,
+      successCount: snapshot.successCount,
+      text: `Episode ${snapshot.episode}: reward ${snapshot.episodeReward.toFixed(2)} steps ${snapshot.episodeSteps}`,
+    });
   }
   if (snapshot.status === 'done') {
-    const entry = document.createElement('div');
-    entry.textContent = `Training complete. Total reward ${snapshot.totalReward.toFixed(2)} in ${snapshot.totalSteps} steps.`;
-    logEl.prepend(entry);
+    logEntries.unshift({
+      type: 'done',
+      text: `Training complete. Total reward ${snapshot.totalReward.toFixed(2)} in ${snapshot.totalSteps} steps.`,
+    });
   }
+  renderEventLog();
+}
+
+function renderEventLog() {
+  if (!logEl) {
+    return;
+  }
+  const showEpisodes = logFilterEpisodes ? logFilterEpisodes.checked : true;
+  const showSuccess = logFilterSuccess ? logFilterSuccess.checked : true;
+  const showGoals = logFilterGoals ? logFilterGoals.checked : true;
+
+  logEl.innerHTML = '';
+  logEntries
+    .filter((entry) => {
+      if (entry.type === 'episode') {
+        if (!showEpisodes) {
+          return false;
+        }
+        const succeeded = entry.successCount > 0;
+        if (!showSuccess && succeeded) {
+          return false;
+        }
+      }
+      if (entry.type === 'goal') {
+        return showGoals;
+      }
+      return true;
+    })
+    .slice(0, 200)
+    .forEach((entry) => {
+      const node = document.createElement('li');
+      node.className = 'log-entry';
+      node.textContent = entry.text;
+      logEl.appendChild(node);
+    });
 }
 
 function renderObstacleLists() {
@@ -731,11 +926,13 @@ function serializeForm(form) {
 }
 
 function attachEventListeners() {
-  const stopBtn = document.getElementById('stopBtn');
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     if (!wasmReady) {
-      statusEl.textContent = 'Loading WASM...';
+      setStatus('Engine still loading. Please wait or retry.');
+      if (!wasmLoadInProgress) {
+        loadWasm();
+      }
       return;
     }
     const cfg = serializeForm(form);
@@ -749,15 +946,20 @@ function attachEventListeners() {
     const config = JSON.stringify(cfg);
     resetAnimationState();
     window.tinyrlStartTraining(config);
-    statusEl.textContent = 'Training...';
+    hideWasmRetryButton();
+    setStatus('Training...');
+    setStartButtonEnabled(false);
   });
-  stopBtn.addEventListener('click', () => {
-    if (wasmReady) {
-      window.tinyrlStopTraining();
-      statusEl.textContent = 'Stopped';
-      resetAnimationState();
-    }
-  });
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+      if (wasmReady) {
+        window.tinyrlStopTraining();
+        setStatus('Stopped');
+        setStartButtonEnabled(true);
+        resetAnimationState();
+      }
+    });
+  }
   document.querySelectorAll('.view-toggle button').forEach((btn) => {
     btn.addEventListener('click', () => {
       document
@@ -773,19 +975,46 @@ function attachEventListeners() {
     btn.addEventListener('click', () => {
       setTool(btn.dataset.tool || 'none');
     });
+    btn.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveToolSelection(1, btn);
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveToolSelection(-1, btn);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        const firstButton = toolButtons[0];
+        if (firstButton) {
+          setTool(firstButton.dataset.tool || 'none');
+          firstButton.focus();
+        }
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        const lastButton = toolButtons[toolButtons.length - 1];
+        if (lastButton) {
+          setTool(lastButton.dataset.tool || 'none');
+          lastButton.focus();
+        }
+      }
+    });
   });
   if (slipProbSlider && slipProbValue) {
     slipProbSlider.addEventListener('input', () => {
-      slipProbValue.textContent = Number(slipProbSlider.value).toFixed(2);
+      const display = Number(slipProbSlider.value).toFixed(2);
+      if (slipProbValue instanceof HTMLOutputElement) {
+        slipProbValue.value = display;
+      }
+      slipProbValue.textContent = display;
     });
   }
   if (addWallBtn) {
     addWallBtn.addEventListener('click', () => {
-      const row = Number(wallRowInput.value);
-      const col = Number(wallColInput.value);
-      if (Number.isNaN(row) || Number.isNaN(col)) {
+      const coordinates = validateObstacleCoordinates(wallRowInput, wallColInput);
+      if (!coordinates) {
         return;
       }
+      const { row, col } = coordinates;
       const exists = state.walls.some((wall) => wall.row === row && wall.col === col);
       if (!exists) {
         state.walls.push({ row, col });
@@ -798,10 +1027,13 @@ function attachEventListeners() {
   }
   if (addSlipBtn) {
     addSlipBtn.addEventListener('click', () => {
-      const row = Number(slipRowInput.value);
-      const col = Number(slipColInput.value);
+      const coordinates = validateObstacleCoordinates(slipRowInput, slipColInput);
+      if (!coordinates) {
+        return;
+      }
+      const { row, col } = coordinates;
       let probability = Number(slipProbInput.value);
-      if (Number.isNaN(row) || Number.isNaN(col) || Number.isNaN(probability)) {
+      if (Number.isNaN(probability)) {
         return;
       }
       if (probability < 0) probability = 0;
@@ -811,6 +1043,15 @@ function attachEventListeners() {
       draw();
     });
   }
+
+  [wallRowInput, wallColInput, slipRowInput, slipColInput].forEach((input) => {
+    if (!input) {
+      return;
+    }
+    input.addEventListener('input', () => {
+      input.setCustomValidity('');
+    });
+  });
 
   if (canvas) {
     canvas.addEventListener('click', (event) => {
@@ -884,6 +1125,22 @@ function attachEventListeners() {
         break;
     }
   });
+
+  if (logFilterEpisodes) {
+    logFilterEpisodes.addEventListener('change', renderEventLog);
+  }
+  if (logFilterSuccess) {
+    logFilterSuccess.addEventListener('change', renderEventLog);
+  }
+  if (logFilterGoals) {
+    logFilterGoals.addEventListener('change', renderEventLog);
+  }
+  if (clearLogBtn) {
+    clearLogBtn.addEventListener('click', () => {
+      logEntries.length = 0;
+      renderEventLog();
+    });
+  }
 }
 
 function setTool(tool) {
@@ -891,6 +1148,8 @@ function setTool(tool) {
   toolButtons.forEach((btn) => {
     const isActive = (btn.dataset.tool || 'none') === tool;
     btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-checked', String(isActive));
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
   });
   if (slipProbSlider) {
     const enabled = tool === 'slip';
@@ -898,11 +1157,36 @@ function setTool(tool) {
     if (slipProbLabelEl) {
       slipProbLabelEl.classList.toggle('disabled', !enabled);
     }
+    if (enabled) {
+      slipProbSlider.removeAttribute('aria-disabled');
+      if (slipProbLabelEl) {
+        slipProbLabelEl.removeAttribute('aria-disabled');
+      }
+    } else {
+      slipProbSlider.setAttribute('aria-disabled', 'true');
+      if (slipProbLabelEl) {
+        slipProbLabelEl.setAttribute('aria-disabled', 'true');
+      }
+    }
   }
   if (tool === 'none' && hoverCell) {
     hoverCell = null;
   }
   draw();
+}
+
+function moveToolSelection(direction, currentButton) {
+  if (!Array.isArray(toolButtons) || toolButtons.length === 0) {
+    return;
+  }
+  const currentIndex = toolButtons.indexOf(currentButton);
+  if (currentIndex === -1) {
+    return;
+  }
+  const nextIndex = (currentIndex + direction + toolButtons.length) % toolButtons.length;
+  const nextButton = toolButtons[nextIndex];
+  setTool(nextButton.dataset.tool || 'none');
+  nextButton.focus();
 }
 
 function handleCanvasObstacleClick(row, col) {
@@ -1021,6 +1305,7 @@ function resetAnimationState() {
   currentGoals = state.goals.map((goal) => ({ ...goal }));
   currentWalls = state.walls.map((wall) => ({ ...wall }));
   currentSlips = state.slips.map((slip) => ({ ...slip }));
+  syncObstacleInputConstraints();
   renderObstacleLists();
 }
 
