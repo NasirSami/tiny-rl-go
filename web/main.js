@@ -13,6 +13,7 @@ let currentGamma = 0.9;
 let currentGoals = [];
 let currentWalls = [];
 let currentSlips = [];
+let currentTool = 'none';
 let recentRewards = [];
 let recentSuccessFlags = [];
 let lastSuccessCount = 0;
@@ -38,6 +39,11 @@ const slipColInput = document.getElementById('slipCol');
 const slipProbInput = document.getElementById('slipProb');
 const addSlipBtn = document.getElementById('addSlipBtn');
 const slipList = document.getElementById('slipList');
+const obstacleToolbar = document.getElementById('obstacleToolbar');
+const toolButtons = obstacleToolbar ? Array.from(obstacleToolbar.querySelectorAll('.tool-button')) : [];
+const slipProbSlider = document.getElementById('slipProbSlider');
+const slipProbValue = document.getElementById('slipProbValue');
+const slipProbLabelEl = document.getElementById('slipProbLabel');
 
 const CELL_SIZE = 24;
 const MIN_ROWS = 1;
@@ -108,6 +114,9 @@ function initializeSliders() {
   });
   syncSlidersFromState();
   renderObstacleLists();
+  if (slipProbSlider && slipProbValue) {
+    slipProbValue.textContent = Number(slipProbSlider.value).toFixed(2);
+  }
 }
 
 function handleSliderChange(name, value) {
@@ -153,7 +162,7 @@ function ensureGoalsWithinBounds() {
   currentGoals = state.goals.map((goal) => ({ ...goal }));
   state.walls = state.walls.filter((wall) => wall.row >= 0 && wall.row < state.rows && wall.col >= 0 && wall.col < state.cols);
   currentWalls = state.walls.map((wall) => ({ ...wall }));
-  state.slips = state.slips.filter((slip) => slip.row >= 0 && slip.row < state.rows && slip.col >= 0 && slip.col < state.cols);
+  state.slips = normalizeSlips(state.slips.filter((slip) => slip.row >= 0 && slip.row < state.rows && slip.col >= 0 && slip.col < state.cols));
   currentSlips = state.slips.map((slip) => ({ ...slip }));
   renderObstacleLists();
 }
@@ -287,8 +296,8 @@ function updateView(snapshot) {
     state.walls = currentWalls.map((wall) => ({ ...wall }));
   }
   if (Array.isArray(snapshot.slips)) {
-    currentSlips = snapshot.slips.map((slip) => ({ ...slip }));
-    state.slips = currentSlips.map((slip) => ({ ...slip }));
+    state.slips = normalizeSlips(snapshot.slips);
+    currentSlips = state.slips.map((slip) => ({ ...slip }));
   }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
@@ -313,12 +322,13 @@ function updateView(snapshot) {
       state.walls = snapshot.config.walls.map((wall) => ({ ...wall }));
     }
     if (Array.isArray(snapshot.config.slips)) {
-      state.slips = snapshot.config.slips.map((slip) => ({ ...slip }));
+      state.slips = normalizeSlips(snapshot.config.slips);
     }
     ensureGoalsWithinBounds();
     syncSlidersFromState();
     updateCanvasSize();
   }
+  renderObstacleLists();
   draw();
 }
 
@@ -405,7 +415,8 @@ function renderObstacleLists() {
     slipList.innerHTML = '';
     state.slips.forEach((slip, idx) => {
       const item = document.createElement('li');
-      const probLabel = typeof slip.probability === 'number' ? slip.probability.toFixed(2) : '0.00';
+      const probValue = slip.probability ?? slip.Probability;
+      const probLabel = typeof probValue === 'number' ? probValue.toFixed(2) : '0.00';
       item.textContent = `(${slip.row}, ${slip.col}) p=${probLabel}`;
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
@@ -572,7 +583,7 @@ function serializeForm(form) {
     goalInterval: state.goalInterval,
     goals: state.goalCount > 0 ? [] : state.goals.map((goal) => ({ ...goal })),
     walls: state.walls.map((wall) => ({ ...wall })),
-    slips: state.slips.map((slip) => ({ ...slip })),
+    slips: state.slips.map((slip) => ({ row: slip.row, col: slip.col, probability: slip.probability })),
   };
 }
 
@@ -615,6 +626,16 @@ function attachEventListeners() {
     });
   });
   resizeHandle.addEventListener('mousedown', startResize);
+  toolButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setTool(btn.dataset.tool || 'none');
+    });
+  });
+  if (slipProbSlider && slipProbValue) {
+    slipProbSlider.addEventListener('input', () => {
+      slipProbValue.textContent = Number(slipProbSlider.value).toFixed(2);
+    });
+  }
   if (addWallBtn) {
     addWallBtn.addEventListener('click', () => {
       const row = Number(wallRowInput.value);
@@ -622,9 +643,14 @@ function attachEventListeners() {
       if (Number.isNaN(row) || Number.isNaN(col)) {
         return;
       }
-      state.walls.push({ row, col });
-      ensureGoalsWithinBounds();
-      draw();
+      const exists = state.walls.some((wall) => wall.row === row && wall.col === col);
+      if (!exists) {
+        state.walls.push({ row, col });
+        removeSlip(row, col);
+        ensureGoalsWithinBounds();
+        renderObstacleLists();
+        draw();
+      }
     });
   }
   if (addSlipBtn) {
@@ -637,11 +663,161 @@ function attachEventListeners() {
       }
       if (probability < 0) probability = 0;
       if (probability > 1) probability = 1;
-      state.slips.push({ row, col, probability });
-      ensureGoalsWithinBounds();
+      placeSlip(row, col, probability);
+      renderObstacleLists();
       draw();
     });
   }
+
+  if (canvas) {
+    canvas.addEventListener('click', (event) => {
+      if (currentTool === 'none') {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const pointerX = (event.clientX - rect.left) * scaleX;
+      const pointerY = (event.clientY - rect.top) * scaleY;
+      const cellWidth = canvas.width / state.cols;
+      const cellHeight = canvas.height / state.rows;
+      const col = Math.floor(pointerX / cellWidth);
+      const row = Math.floor(pointerY / cellHeight);
+      if (col < 0 || col >= state.cols || row < 0 || row >= state.rows) {
+        return;
+      }
+      handleCanvasObstacleClick(row, col);
+    });
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (event.target && event.target.tagName === 'INPUT') {
+      return;
+    }
+    switch (event.key.toLowerCase()) {
+      case 'n':
+        setTool('none');
+        break;
+      case 'w':
+        setTool('wall');
+        break;
+      case 's':
+        setTool('slip');
+        break;
+      case 'e':
+        setTool('erase');
+        break;
+      default:
+        break;
+    }
+  });
+}
+
+function setTool(tool) {
+  currentTool = tool;
+  toolButtons.forEach((btn) => {
+    const isActive = (btn.dataset.tool || 'none') === tool;
+    btn.classList.toggle('active', isActive);
+  });
+  if (slipProbSlider) {
+    const enabled = tool === 'slip';
+    slipProbSlider.disabled = !enabled;
+    if (slipProbLabelEl) {
+      slipProbLabelEl.classList.toggle('disabled', !enabled);
+    }
+  }
+}
+
+function handleCanvasObstacleClick(row, col) {
+  switch (currentTool) {
+    case 'wall':
+      toggleWall(row, col);
+      break;
+    case 'slip':
+      placeSlip(row, col, getCurrentSlipProbability());
+      break;
+    case 'erase':
+      eraseObstacle(row, col);
+      break;
+    default:
+      return;
+  }
+  renderObstacleLists();
+  draw();
+}
+
+function toggleWall(row, col) {
+  const index = state.walls.findIndex((wall) => wall.row === row && wall.col === col);
+  if (index >= 0) {
+    state.walls.splice(index, 1);
+  } else {
+    state.walls.push({ row, col });
+    removeSlip(row, col);
+  }
+  currentWalls = state.walls.map((wall) => ({ ...wall }));
+}
+
+function placeSlip(row, col, probability) {
+  if (probability <= 0) {
+    removeSlip(row, col);
+    return;
+  }
+  const payload = { row, col, probability };
+  const index = state.slips.findIndex((slip) => slip.row === row && slip.col === col);
+  if (index >= 0) {
+    state.slips[index] = payload;
+  } else {
+    state.slips.push(payload);
+  }
+  removeWall(row, col);
+  state.slips = normalizeSlips(state.slips);
+  currentSlips = state.slips.map((slip) => ({ ...slip }));
+}
+
+function eraseObstacle(row, col) {
+  removeWall(row, col);
+  removeSlip(row, col);
+}
+
+function removeWall(row, col) {
+  const index = state.walls.findIndex((wall) => wall.row === row && wall.col === col);
+  if (index >= 0) {
+    state.walls.splice(index, 1);
+    currentWalls = state.walls.map((wall) => ({ ...wall }));
+  }
+}
+
+function removeSlip(row, col) {
+  const index = state.slips.findIndex((slip) => slip.row === row && slip.col === col);
+  if (index >= 0) {
+    state.slips.splice(index, 1);
+    state.slips = normalizeSlips(state.slips);
+    currentSlips = state.slips.map((slip) => ({ ...slip }));
+  }
+}
+
+function getCurrentSlipProbability() {
+  if (!slipProbSlider) {
+    return 0.5;
+  }
+  let value = Number(slipProbSlider.value);
+  if (Number.isNaN(value)) {
+    value = 0.5;
+  }
+  if (value < 0) value = 0;
+  if (value > 1) value = 1;
+  return value;
+}
+
+function normalizeSlips(slips) {
+  if (!Array.isArray(slips)) {
+    return [];
+  }
+  return slips.map((slip) => {
+    const probabilityRaw = typeof slip.probability === 'number' ? slip.probability : Number(slip.Probability ?? slip.prob ?? 0);
+    const probability = clamp(Number.isNaN(probabilityRaw) ? 0 : probabilityRaw, 0, 1);
+    return { row: slip.row, col: slip.col, probability };
+  });
 }
 
 function resetAnimationState() {
@@ -652,6 +828,7 @@ function resetAnimationState() {
   currentGoals = state.goals.map((goal) => ({ ...goal }));
   currentWalls = state.walls.map((wall) => ({ ...wall }));
   currentSlips = state.slips.map((slip) => ({ ...slip }));
+  renderObstacleLists();
 }
 
 (async function init() {
@@ -661,5 +838,6 @@ function resetAnimationState() {
   ensureGoalsWithinBounds();
   updateCanvasSize();
   attachEventListeners();
+  setTool(currentTool);
   draw();
 })();

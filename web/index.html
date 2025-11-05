@@ -141,15 +141,27 @@
         <div class="status" id="status"></div>
       </aside>
       <main class="main">
-        <div class="canvas-container" id="canvasContainer">
-          <canvas id="gridCanvas" width="400" height="400"></canvas>
-          <div class="resize-handle" id="resizeHandle"></div>
+        <div class="canvas-toolbar">
+          <div class="obstacle-toolbar" id="obstacleToolbar">
+            <button type="button" data-tool="none" class="tool-button active">Navigate</button>
+            <button type="button" data-tool="wall" class="tool-button">Place Wall</button>
+            <button type="button" data-tool="slip" class="tool-button">Place Slip</button>
+            <button type="button" data-tool="erase" class="tool-button">Erase</button>
+            <label class="slip-probability" id="slipProbLabel">Slip p
+              <input type="range" id="slipProbSlider" min="0" max="1" step="0.05" value="0.5" />
+              <span id="slipProbValue">0.50</span>
+            </label>
+          </div>
           <div class="view-toggle">
             <button type="button" data-view="path" class="active">Path</button>
             <button type="button" data-view="heatmap">Heatmap</button>
           </div>
         </div>
-        <p class="canvas-instructions">Drag the corner to resize. Goals are auto-placed based on the sliders.</p>
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="gridCanvas" width="400" height="400"></canvas>
+          <div class="resize-handle" id="resizeHandle"></div>
+        </div>
+        <p class="canvas-instructions">Use the toolbar (shortcuts: N navigate, W wall, S slip, E erase) and drag the corner to resize the grid.</p>
       </main>
       <section class="metrics" id="metrics">
         <h2>Metrics</h2>

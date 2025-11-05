@@ -158,10 +158,20 @@ button:hover {
   color: #555;
 }
 
+.canvas-container {
+  position: relative;
+}
+
+.canvas-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .view-toggle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
   display: flex;
   gap: 8px;
 }
@@ -171,10 +181,53 @@ button:hover {
   font-size: 0.8rem;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
+  border: none;
+  border-radius: 6px;
 }
 
 .view-toggle button.active {
   background: #198754;
+}
+
+.obstacle-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tool-button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  background: #6c757d;
+  color: #fff;
+  cursor: pointer;
+}
+
+.tool-button.active {
+  background: #0d6efd;
+}
+
+.slip-probability {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.slip-probability input[type='range'] {
+  width: 120px;
+}
+
+.slip-probability span {
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+}
+
+.slip-probability.disabled {
+  opacity: 0.5;
 }
 
 .obstacle-group {
