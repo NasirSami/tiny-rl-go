@@ -14,6 +14,7 @@ let currentGoals = [];
 let currentWalls = [];
 let currentSlips = [];
 let currentTool = 'none';
+let hoverCell = null;
 let recentRewards = [];
 let recentSuccessFlags = [];
 let lastSuccessCount = 0;
@@ -301,16 +302,17 @@ function updateView(snapshot) {
   }
   const delayLabel = playbackDelayMs > 0 ? `${playbackDelayMs}ms` : '0ms';
   const algoLabel = currentAlgorithm || 'montecarlo';
-  const goalInfo =
-    snapshot.config.goalCount && snapshot.config.goalCount > 0
-      ? `goals ${snapshot.config.goalCount} (interval ${snapshot.config.goalInterval || 0})`
-      : 'manual goals';
-  const rolling = formatRollingStats();
-  metricsEl.textContent = `Episode ${snapshot.episode}/${snapshot.config.episodes} — reward ${snapshot.episodeReward.toFixed(
-    2,
-  )} — success ${snapshot.successCount} — grid ${snapshot.config.rows}×${snapshot.config.cols} — algo ${algoLabel} — gamma ${currentGamma.toFixed(
-    2,
-  )} — penalty ${currentStepPenalty.toFixed(3)} (eff ${effectivePenalty.toFixed(3)}) — ${goalInfo} — delay ${delayLabel}${rolling}`;
+  const goalInfo = snapshot.config.goalCount && snapshot.config.goalCount > 0
+    ? `${snapshot.config.goalCount} (interval ${snapshot.config.goalInterval || 0})`
+    : 'manual';
+  const rolling = getRollingStats();
+  renderMetrics(snapshot, {
+    effectivePenalty,
+    algoLabel,
+    delayLabel,
+    goalInfo,
+    rolling,
+  });
   appendLog(snapshot);
   if (snapshot.status === 'done' && snapshot.config) {
     state.rows = snapshot.config.rows;
@@ -355,28 +357,91 @@ function averageOfWindow(values, windowSize) {
   return total / count;
 }
 
-function formatRollingStats() {
+function getRollingStats() {
   if (!recentRewards.length) {
-    return '';
+    return null;
   }
-  const reward10 = averageOfWindow(recentRewards, 10);
-  const reward50 = averageOfWindow(recentRewards, 50);
-  const success10 = averageOfWindow(recentSuccessFlags, 10);
-  const success50 = averageOfWindow(recentSuccessFlags, 50);
-  const parts = [];
-  if (reward10 !== null) {
-    parts.push(` reward₁₀ avg ${reward10.toFixed(2)}`);
+  return {
+    reward10: averageOfWindow(recentRewards, 10),
+    reward50: averageOfWindow(recentRewards, 50),
+    success10: averageOfWindow(recentSuccessFlags, 10),
+    success50: averageOfWindow(recentSuccessFlags, 50),
+  };
+}
+
+function renderMetrics(snapshot, context) {
+  if (!metricsEl) {
+    return;
   }
-  if (reward50 !== null) {
-    parts.push(` reward₅₀ avg ${reward50.toFixed(2)}`);
-  }
-  if (success10 !== null) {
-    parts.push(` success₁₀ ${success10.toFixed(2)}`);
-  }
-  if (success50 !== null) {
-    parts.push(` success₅₀ ${success50.toFixed(2)}`);
-  }
-  return parts.length ? ` —${parts.join(' —')}` : '';
+  const completed = snapshot.episodesCompleted || 0;
+  const avgReward = completed > 0 ? snapshot.totalReward / completed : 0;
+  const avgSteps = completed > 0 ? snapshot.totalSteps / completed : 0;
+  const successRate = completed > 0 ? snapshot.successCount / completed : 0;
+  const rolling = context.rolling;
+  const epsilonDecayDisplay = typeof snapshot.config.epsilonDecay === 'number'
+    ? snapshot.config.epsilonDecay.toFixed(3)
+    : '--';
+
+  const rollingPills = rolling
+    ? [
+        { label: 'reward₁₀', value: rolling.reward10 },
+        { label: 'reward₅₀', value: rolling.reward50 },
+        { label: 'success₁₀', value: rolling.success10 },
+        { label: 'success₅₀', value: rolling.success50 },
+      ]
+        .filter((item) => item.value !== null && item.value !== undefined)
+        .map(
+          (item) =>
+            `<div class="metric-pill"><span>${item.label}</span><strong>${item.value.toFixed(2)}</strong></div>`
+        )
+        .join('')
+    : '';
+
+  metricsEl.innerHTML = `
+    <div class="metric-cards">
+      <div class="metric-card">
+        <span class="metric-label">Episode</span>
+        <span class="metric-value">${snapshot.episode}</span>
+        <span class="metric-sub">of ${snapshot.config.episodes}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Reward</span>
+        <span class="metric-value">${snapshot.episodeReward.toFixed(2)}</span>
+        <span class="metric-sub">avg ${avgReward.toFixed(2)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Success</span>
+        <span class="metric-value">${snapshot.successCount}</span>
+        <span class="metric-sub">rate ${(successRate * 100).toFixed(0)}%</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Steps</span>
+        <span class="metric-value">${snapshot.episodeSteps}</span>
+        <span class="metric-sub">avg ${avgSteps.toFixed(2)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Grid</span>
+        <span class="metric-value">${snapshot.config.rows}×${snapshot.config.cols}</span>
+        <span class="metric-sub">goals ${context.goalInfo}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Algorithm</span>
+        <span class="metric-value">${context.algoLabel}</span>
+        <span class="metric-sub">γ=${currentGamma.toFixed(2)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Penalty</span>
+        <span class="metric-value">${currentStepPenalty.toFixed(3)}</span>
+        <span class="metric-sub">eff ${context.effectivePenalty.toFixed(3)}</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Delay</span>
+        <span class="metric-value">${context.delayLabel}</span>
+        <span class="metric-sub">Eps decay ${epsilonDecayDisplay}</span>
+      </div>
+    </div>
+    ${rollingPills ? `<div class="metric-rolling">${rollingPills}</div>` : ''}
+  `;
 }
 
 function appendLog(snapshot) {
@@ -395,9 +460,30 @@ function appendLog(snapshot) {
 function renderObstacleLists() {
   if (wallList) {
     wallList.innerHTML = '';
+    if (state.walls.length > 0) {
+      const clearItem = document.createElement('li');
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.textContent = 'clear all';
+      clearBtn.addEventListener('click', () => {
+        clearWalls();
+        renderObstacleLists();
+        draw();
+      });
+      clearItem.append('walls ', clearBtn);
+      wallList.appendChild(clearItem);
+    }
+    if (state.walls.length === 0) {
+      const emptyItem = document.createElement('li');
+      emptyItem.className = 'obstacle-empty';
+      emptyItem.textContent = 'No walls yet — choose Wall tool and click the grid.';
+      wallList.appendChild(emptyItem);
+    }
     state.walls.forEach((wall, idx) => {
       const item = document.createElement('li');
-      item.textContent = `(${wall.row}, ${wall.col})`;
+      const label = document.createElement('span');
+      label.className = 'obstacle-chip';
+      label.textContent = `(${wall.row}, ${wall.col})`;
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.textContent = 'remove';
@@ -407,27 +493,52 @@ function renderObstacleLists() {
         renderObstacleLists();
         draw();
       });
-      item.appendChild(removeBtn);
+      item.append(label, removeBtn);
       wallList.appendChild(item);
     });
   }
   if (slipList) {
     slipList.innerHTML = '';
+    if (state.slips.length > 0) {
+      const clearItem = document.createElement('li');
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.textContent = 'clear all';
+      clearBtn.addEventListener('click', () => {
+        clearSlips();
+        renderObstacleLists();
+        draw();
+      });
+      clearItem.append('slips ', clearBtn);
+      slipList.appendChild(clearItem);
+    }
+    if (state.slips.length === 0) {
+      const emptyItem = document.createElement('li');
+      emptyItem.className = 'obstacle-empty';
+      emptyItem.textContent = 'No slip tiles yet — choose Slip tool and click the grid.';
+      slipList.appendChild(emptyItem);
+    }
     state.slips.forEach((slip, idx) => {
       const item = document.createElement('li');
+      const label = document.createElement('span');
+      label.className = 'obstacle-chip';
+      label.textContent = `(${slip.row}, ${slip.col})`;
       const probValue = slip.probability ?? slip.Probability;
       const probLabel = typeof probValue === 'number' ? probValue.toFixed(2) : '0.00';
-      item.textContent = `(${slip.row}, ${slip.col}) p=${probLabel}`;
+      const badge = document.createElement('span');
+      badge.className = 'obstacle-badge';
+      badge.textContent = `p=${probLabel}`;
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.textContent = 'remove';
       removeBtn.addEventListener('click', () => {
         state.slips.splice(idx, 1);
+        state.slips = normalizeSlips(state.slips);
         currentSlips = state.slips.map((s) => ({ ...s }));
         renderObstacleLists();
         draw();
       });
-      item.appendChild(removeBtn);
+      item.append(label, badge, removeBtn);
       slipList.appendChild(item);
     });
   }
@@ -486,6 +597,7 @@ function drawGrid(snapshot) {
   drawSlipTiles(cellWidth, cellHeight);
   drawGoals(cellWidth, cellHeight);
   drawTrail(cellWidth, cellHeight);
+  drawHover(cellWidth, cellHeight);
   drawCell(snapshot.position, cellWidth, cellHeight, '#d63384');
 }
 
@@ -532,6 +644,37 @@ function drawSlipTiles(cellWidth, cellHeight) {
     ctx.fillStyle = 'rgba(253, 126, 20, 0.6)';
     ctx.fillRect(slip.col * cellWidth + 4, slip.row * cellHeight + 4, cellWidth - 8, cellHeight - 8);
   });
+}
+
+function drawHover(cellWidth, cellHeight) {
+  if (!hoverCell || currentTool === 'none') {
+    return;
+  }
+  const { row, col } = hoverCell;
+  const x = col * cellWidth;
+  const y = row * cellHeight;
+  ctx.save();
+  switch (currentTool) {
+    case 'wall':
+      ctx.strokeStyle = '#343a40';
+      ctx.fillStyle = 'rgba(52, 58, 64, 0.25)';
+      break;
+    case 'slip':
+      ctx.strokeStyle = '#fd7e14';
+      ctx.fillStyle = 'rgba(253, 126, 20, 0.25)';
+      break;
+    case 'erase':
+      ctx.strokeStyle = '#d63384';
+      ctx.fillStyle = 'rgba(214, 51, 132, 0.2)';
+      break;
+    default:
+      ctx.restore();
+      return;
+  }
+  ctx.lineWidth = 2;
+  ctx.fillRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+  ctx.strokeRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+  ctx.restore();
 }
 
 function drawHeatmap(valueMap) {
@@ -688,6 +831,36 @@ function attachEventListeners() {
       }
       handleCanvasObstacleClick(row, col);
     });
+
+    canvas.addEventListener('mousemove', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const pointerX = (event.clientX - rect.left) * scaleX;
+      const pointerY = (event.clientY - rect.top) * scaleY;
+      const cellWidth = canvas.width / state.cols;
+      const cellHeight = canvas.height / state.rows;
+      const col = Math.floor(pointerX / cellWidth);
+      const row = Math.floor(pointerY / cellHeight);
+      if (col < 0 || col >= state.cols || row < 0 || row >= state.rows) {
+        if (hoverCell !== null) {
+          hoverCell = null;
+          draw();
+        }
+        return;
+      }
+      if (!hoverCell || hoverCell.row !== row || hoverCell.col !== col) {
+        hoverCell = { row, col };
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      if (hoverCell) {
+        hoverCell = null;
+        draw();
+      }
+    });
   }
 
   window.addEventListener('keydown', (event) => {
@@ -726,6 +899,10 @@ function setTool(tool) {
       slipProbLabelEl.classList.toggle('disabled', !enabled);
     }
   }
+  if (tool === 'none' && hoverCell) {
+    hoverCell = null;
+  }
+  draw();
 }
 
 function handleCanvasObstacleClick(row, col) {
@@ -807,6 +984,22 @@ function getCurrentSlipProbability() {
   if (value < 0) value = 0;
   if (value > 1) value = 1;
   return value;
+}
+
+function clearWalls() {
+  if (state.walls.length === 0) {
+    return;
+  }
+  state.walls = [];
+  currentWalls = [];
+}
+
+function clearSlips() {
+  if (state.slips.length === 0) {
+    return;
+  }
+  state.slips = [];
+  currentSlips = [];
 }
 
 function normalizeSlips(slips) {
