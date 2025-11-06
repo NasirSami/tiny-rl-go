@@ -1,6 +1,7 @@
 {
   "buildCommand": "make vercel-build",
   "outputDirectory": "web",
+  "installCommand": "echo 'Skipping install'",
   "headers": [
     {
       "source": "/(.*\\.wasm)",
