@@ -79,6 +79,9 @@ let currentStepPenalty = Number(form.querySelector('input[name="stepPenalty"]').
 
 let isResizingCanvas = false;
 let resizeStart = null;
+const supportsPointerEvents = typeof window !== 'undefined' && 'PointerEvent' in window;
+let activeResizeInput = null;
+let activeResizePointerId = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -203,24 +206,92 @@ function ensureGoalsWithinBounds() {
   renderObstacleLists();
 }
 
-function startResize(event) {
-  event.preventDefault();
-  isResizingCanvas = true;
-  resizeStart = {
-    x: event.clientX,
-    y: event.clientY,
-    rows: state.rows,
-    cols: state.cols,
-  };
-  document.body.style.userSelect = 'none';
+function getEventClientPosition(event) {
+  if (!event) {
+    return null;
+  }
+  if (event.touches && event.touches.length > 0) {
+    const touch = event.touches[0];
+    return { clientX: touch.clientX, clientY: touch.clientY };
+  }
+  if (event.changedTouches && event.changedTouches.length > 0) {
+    const touch = event.changedTouches[0];
+    return { clientX: touch.clientX, clientY: touch.clientY };
+  }
+  if (typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+    return { clientX: event.clientX, clientY: event.clientY };
+  }
+  return null;
+}
+
+function addResizeListeners(type) {
+  if (type === 'pointer') {
+    document.addEventListener('pointermove', onResizeMove);
+    document.addEventListener('pointerup', stopResize);
+    document.addEventListener('pointercancel', stopResize);
+    return;
+  }
+  if (type === 'touch') {
+    document.addEventListener('touchmove', onResizeMove, { passive: false });
+    document.addEventListener('touchend', stopResize);
+    document.addEventListener('touchcancel', stopResize);
+    return;
+  }
   document.addEventListener('mousemove', onResizeMove);
   document.addEventListener('mouseup', stopResize);
 }
 
+function removeResizeListeners() {
+  document.removeEventListener('pointermove', onResizeMove);
+  document.removeEventListener('pointerup', stopResize);
+  document.removeEventListener('pointercancel', stopResize);
+  document.removeEventListener('touchmove', onResizeMove);
+  document.removeEventListener('touchend', stopResize);
+  document.removeEventListener('touchcancel', stopResize);
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', stopResize);
+}
+
+function startResize(event) {
+  event.preventDefault();
+  const position = getEventClientPosition(event);
+  if (!position) {
+    return;
+  }
+  isResizingCanvas = true;
+  activeResizeInput = supportsPointerEvents && event.type && event.type.startsWith('pointer') ? 'pointer' : event.type && event.type.startsWith('touch') ? 'touch' : 'mouse';
+  if (activeResizeInput === 'pointer' && typeof event.pointerId === 'number') {
+    activeResizePointerId = event.pointerId;
+    if (typeof resizeHandle.setPointerCapture === 'function') {
+      try {
+        resizeHandle.setPointerCapture(activeResizePointerId);
+      } catch (error) {
+        console.warn('[resize] failed to set pointer capture', error);
+      }
+    }
+  }
+  resizeStart = {
+    x: position.clientX,
+    y: position.clientY,
+    rows: state.rows,
+    cols: state.cols,
+  };
+  document.body.style.userSelect = 'none';
+  addResizeListeners(activeResizeInput);
+}
+
 function onResizeMove(event) {
   if (!isResizingCanvas) return;
-  const dx = event.clientX - resizeStart.x;
-  const dy = event.clientY - resizeStart.y;
+  if (activeResizeInput === 'pointer' && typeof event.pointerId === 'number' && activeResizePointerId !== null && event.pointerId !== activeResizePointerId) {
+    return;
+  }
+  const position = getEventClientPosition(event);
+  if (!position) {
+    return;
+  }
+  event.preventDefault();
+  const dx = position.clientX - resizeStart.x;
+  const dy = position.clientY - resizeStart.y;
   const newCols = clamp(Math.round((resizeStart.cols * CELL_SIZE + dx) / CELL_SIZE), MIN_COLS, MAX_COLS);
   const newRows = clamp(Math.round((resizeStart.rows * CELL_SIZE + dy) / CELL_SIZE), MIN_ROWS, MAX_ROWS);
   if (newCols !== state.cols || newRows !== state.rows) {
@@ -234,12 +305,24 @@ function onResizeMove(event) {
   }
 }
 
-function stopResize() {
+function stopResize(event) {
   if (!isResizingCanvas) return;
+  if (activeResizeInput === 'pointer' && event && typeof event.pointerId === 'number' && activeResizePointerId !== null && event.pointerId !== activeResizePointerId) {
+    return;
+  }
   isResizingCanvas = false;
   document.body.style.userSelect = '';
-  document.removeEventListener('mousemove', onResizeMove);
-  document.removeEventListener('mouseup', stopResize);
+  removeResizeListeners();
+  if (activeResizeInput === 'pointer' && activeResizePointerId !== null && typeof resizeHandle.releasePointerCapture === 'function') {
+    try {
+      resizeHandle.releasePointerCapture(activeResizePointerId);
+    } catch (error) {
+      console.warn('[resize] failed to release pointer capture', error);
+    }
+  }
+  activeResizePointerId = null;
+  activeResizeInput = null;
+  resizeStart = null;
 }
 
 function setStatus(message) {
@@ -832,7 +915,14 @@ function attachEventListeners() {
       draw();
     });
   });
-  resizeHandle.addEventListener('mousedown', startResize);
+  if (resizeHandle) {
+    if (supportsPointerEvents) {
+      resizeHandle.addEventListener('pointerdown', startResize);
+    } else {
+      resizeHandle.addEventListener('mousedown', startResize);
+      resizeHandle.addEventListener('touchstart', startResize, { passive: false });
+    }
+  }
   toolButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       setTool(btn.dataset.tool || 'none');
