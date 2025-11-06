@@ -39,15 +39,7 @@ const colSlider = form.querySelector('input[name="cols"]');
 const goalCountSlider = form.querySelector('input[name="goalCount"]');
 const goalIntervalSlider = form.querySelector('input[name="goalInterval"]');
 const sliderInputs = form.querySelectorAll('input[type="range"][data-output-target]');
-const wallRowInput = document.getElementById('wallRow');
-const wallColInput = document.getElementById('wallCol');
-const addWallBtn = document.getElementById('addWallBtn');
-const wallList = document.getElementById('wallList');
-const slipRowInput = document.getElementById('slipRow');
-const slipColInput = document.getElementById('slipCol');
-const slipProbInput = document.getElementById('slipProb');
-const addSlipBtn = document.getElementById('addSlipBtn');
-const slipList = document.getElementById('slipList');
+const controlSections = Array.from(form.querySelectorAll('.control-section'));
 const obstacleToolbar = document.getElementById('obstacleToolbar');
 const toolButtons = obstacleToolbar ? Array.from(obstacleToolbar.querySelectorAll('.tool-button')) : [];
 const slipProbSlider = document.getElementById('slipProbSlider');
@@ -106,64 +98,6 @@ function syncSlidersFromState() {
   updateSliderOutput(colSlider);
 }
 
-function syncObstacleInputConstraints() {
-  const maxRow = Math.max(0, state.rows - 1);
-  const maxCol = Math.max(0, state.cols - 1);
-  [wallRowInput, slipRowInput].forEach((input) => {
-    if (!input) return;
-    input.max = maxRow;
-    if (Number(input.value) > maxRow) {
-      input.value = maxRow;
-    }
-    input.setCustomValidity('');
-  });
-  [wallColInput, slipColInput].forEach((input) => {
-    if (!input) return;
-    input.max = maxCol;
-    if (Number(input.value) > maxCol) {
-      input.value = maxCol;
-    }
-    input.setCustomValidity('');
-  });
-}
-
-function validateObstacleCoordinates(rowInput, colInput) {
-  if (!rowInput || !colInput) {
-    return null;
-  }
-  const maxRow = Math.max(0, state.rows - 1);
-  const maxCol = Math.max(0, state.cols - 1);
-  const row = Number(rowInput.value);
-  const col = Number(colInput.value);
-  let valid = true;
-  if (Number.isNaN(row) || row < 0 || row > maxRow) {
-    rowInput.setCustomValidity(`Row must be between 0 and ${maxRow}`);
-    rowInput.reportValidity();
-    valid = false;
-  } else {
-    rowInput.setCustomValidity('');
-  }
-  if (Number.isNaN(col) || col < 0 || col > maxCol) {
-    colInput.setCustomValidity(`Column must be between 0 and ${maxCol}`);
-    colInput.reportValidity();
-    valid = false;
-  } else {
-    colInput.setCustomValidity('');
-  }
-  if (!valid) {
-    return null;
-  }
-  const normalizedRow = Math.round(row);
-  const normalizedCol = Math.round(col);
-  if (rowInput.value !== String(normalizedRow)) {
-    rowInput.value = normalizedRow;
-  }
-  if (colInput.value !== String(normalizedCol)) {
-    colInput.value = normalizedCol;
-  }
-  return { row: normalizedRow, col: normalizedCol };
-}
-
 function updateSliderOutput(input) {
   const targetId = input.dataset.outputTarget;
   if (!targetId) return;
@@ -193,7 +127,6 @@ function initializeSliders() {
     });
   });
   syncSlidersFromState();
-  syncObstacleInputConstraints();
   renderObstacleLists();
   if (slipProbSlider && slipProbValue) {
     const display = Number(slipProbSlider.value).toFixed(2);
@@ -204,13 +137,30 @@ function initializeSliders() {
   }
 }
 
+function initializeControlSections() {
+  if (!controlSections.length) {
+    return;
+  }
+  controlSections.forEach((section) => {
+    section.addEventListener('toggle', () => {
+      if (!section.open) {
+        return;
+      }
+      controlSections.forEach((other) => {
+        if (other !== section) {
+          other.open = false;
+        }
+      });
+    });
+  });
+}
+
 function handleSliderChange(name, value) {
   switch (name) {
     case 'rows':
       state.rows = clamp(Math.round(value), MIN_ROWS, MAX_ROWS);
       ensureGoalsWithinBounds();
       updateCanvasSize();
-      syncObstacleInputConstraints();
       resetAnimationState();
       draw();
       break;
@@ -218,7 +168,6 @@ function handleSliderChange(name, value) {
       state.cols = clamp(Math.round(value), MIN_COLS, MAX_COLS);
       ensureGoalsWithinBounds();
       updateCanvasSize();
-      syncObstacleInputConstraints();
       resetAnimationState();
       draw();
       break;
@@ -251,7 +200,6 @@ function ensureGoalsWithinBounds() {
   currentWalls = state.walls.map((wall) => ({ ...wall }));
   state.slips = normalizeSlips(state.slips.filter((slip) => slip.row >= 0 && slip.row < state.rows && slip.col >= 0 && slip.col < state.cols));
   currentSlips = state.slips.map((slip) => ({ ...slip }));
-  syncObstacleInputConstraints();
   renderObstacleLists();
 }
 
@@ -280,7 +228,6 @@ function onResizeMove(event) {
     state.rows = newRows;
     ensureGoalsWithinBounds();
     syncSlidersFromState();
-    syncObstacleInputConstraints();
     updateCanvasSize();
     resetAnimationState();
     draw();
@@ -652,92 +599,7 @@ function renderEventLog() {
     });
 }
 
-function renderObstacleLists() {
-  if (wallList) {
-    wallList.innerHTML = '';
-    if (state.walls.length > 0) {
-      const clearItem = document.createElement('li');
-      const clearBtn = document.createElement('button');
-      clearBtn.type = 'button';
-      clearBtn.textContent = 'clear all';
-      clearBtn.addEventListener('click', () => {
-        clearWalls();
-        renderObstacleLists();
-        draw();
-      });
-      clearItem.append('walls ', clearBtn);
-      wallList.appendChild(clearItem);
-    }
-    if (state.walls.length === 0) {
-      const emptyItem = document.createElement('li');
-      emptyItem.className = 'obstacle-empty';
-      emptyItem.textContent = 'No walls yet — choose Wall tool and click the grid.';
-      wallList.appendChild(emptyItem);
-    }
-    state.walls.forEach((wall, idx) => {
-      const item = document.createElement('li');
-      const label = document.createElement('span');
-      label.className = 'obstacle-chip';
-      label.textContent = `(${wall.row}, ${wall.col})`;
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.textContent = 'remove';
-      removeBtn.addEventListener('click', () => {
-        state.walls.splice(idx, 1);
-        currentWalls = state.walls.map((w) => ({ ...w }));
-        renderObstacleLists();
-        draw();
-      });
-      item.append(label, removeBtn);
-      wallList.appendChild(item);
-    });
-  }
-  if (slipList) {
-    slipList.innerHTML = '';
-    if (state.slips.length > 0) {
-      const clearItem = document.createElement('li');
-      const clearBtn = document.createElement('button');
-      clearBtn.type = 'button';
-      clearBtn.textContent = 'clear all';
-      clearBtn.addEventListener('click', () => {
-        clearSlips();
-        renderObstacleLists();
-        draw();
-      });
-      clearItem.append('slips ', clearBtn);
-      slipList.appendChild(clearItem);
-    }
-    if (state.slips.length === 0) {
-      const emptyItem = document.createElement('li');
-      emptyItem.className = 'obstacle-empty';
-      emptyItem.textContent = 'No slip tiles yet — choose Slip tool and click the grid.';
-      slipList.appendChild(emptyItem);
-    }
-    state.slips.forEach((slip, idx) => {
-      const item = document.createElement('li');
-      const label = document.createElement('span');
-      label.className = 'obstacle-chip';
-      label.textContent = `(${slip.row}, ${slip.col})`;
-      const probValue = slip.probability ?? slip.Probability;
-      const probLabel = typeof probValue === 'number' ? probValue.toFixed(2) : '0.00';
-      const badge = document.createElement('span');
-      badge.className = 'obstacle-badge';
-      badge.textContent = `p=${probLabel}`;
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.textContent = 'remove';
-      removeBtn.addEventListener('click', () => {
-        state.slips.splice(idx, 1);
-        state.slips = normalizeSlips(state.slips);
-        currentSlips = state.slips.map((s) => ({ ...s }));
-        renderObstacleLists();
-        draw();
-      });
-      item.append(label, badge, removeBtn);
-      slipList.appendChild(item);
-    });
-  }
-}
+function renderObstacleLists() {}
 
 function formatStatus(snapshot) {
   switch (snapshot.status) {
@@ -1008,50 +870,6 @@ function attachEventListeners() {
       slipProbValue.textContent = display;
     });
   }
-  if (addWallBtn) {
-    addWallBtn.addEventListener('click', () => {
-      const coordinates = validateObstacleCoordinates(wallRowInput, wallColInput);
-      if (!coordinates) {
-        return;
-      }
-      const { row, col } = coordinates;
-      const exists = state.walls.some((wall) => wall.row === row && wall.col === col);
-      if (!exists) {
-        state.walls.push({ row, col });
-        removeSlip(row, col);
-        ensureGoalsWithinBounds();
-        renderObstacleLists();
-        draw();
-      }
-    });
-  }
-  if (addSlipBtn) {
-    addSlipBtn.addEventListener('click', () => {
-      const coordinates = validateObstacleCoordinates(slipRowInput, slipColInput);
-      if (!coordinates) {
-        return;
-      }
-      const { row, col } = coordinates;
-      let probability = Number(slipProbInput.value);
-      if (Number.isNaN(probability)) {
-        return;
-      }
-      if (probability < 0) probability = 0;
-      if (probability > 1) probability = 1;
-      placeSlip(row, col, probability);
-      renderObstacleLists();
-      draw();
-    });
-  }
-
-  [wallRowInput, wallColInput, slipRowInput, slipColInput].forEach((input) => {
-    if (!input) {
-      return;
-    }
-    input.addEventListener('input', () => {
-      input.setCustomValidity('');
-    });
-  });
 
   if (canvas) {
     canvas.addEventListener('click', (event) => {
@@ -1305,7 +1123,6 @@ function resetAnimationState() {
   currentGoals = state.goals.map((goal) => ({ ...goal }));
   currentWalls = state.walls.map((wall) => ({ ...wall }));
   currentSlips = state.slips.map((slip) => ({ ...slip }));
-  syncObstacleInputConstraints();
   renderObstacleLists();
 }
 
@@ -1313,6 +1130,7 @@ function resetAnimationState() {
   await loadWasm();
   registerHandlers();
   initializeSliders();
+  initializeControlSections();
   ensureGoalsWithinBounds();
   updateCanvasSize();
   attachEventListeners();

@@ -11,7 +11,7 @@
       <aside class="sidebar">
         <h1>tiny-rl-go</h1>
         <form id="controlForm">
-          <details class="control-section" open>
+          <details class="control-section">
             <summary>Training</summary>
             <div class="control-grid">
               <label class="slider-label">
@@ -50,7 +50,7 @@
             </div>
           </details>
 
-          <details class="control-section" open>
+          <details class="control-section">
             <summary>Learning Parameters</summary>
             <div class="control-grid">
               <label class="slider-label">
@@ -80,7 +80,7 @@
             </div>
           </details>
 
-          <details class="control-section" open>
+          <details class="control-section">
             <summary>Environment</summary>
             <div class="control-grid">
               <label class="slider-label">
@@ -126,31 +126,6 @@
             </div>
           </details>
 
-          <details class="control-section" open>
-            <summary>Obstacles</summary>
-            <div class="slider-help">Maintain walls and slip tiles.</div>
-            <div class="obstacle-controls">
-              <div>
-                <strong>Walls</strong>
-                <div class="obstacle-row">
-                  <input type="number" id="wallRow" min="0" max="19" value="0" />
-                  <input type="number" id="wallCol" min="0" max="19" value="0" />
-                  <button type="button" id="addWallBtn">Add Wall</button>
-                </div>
-                <ul id="wallList" class="obstacle-list"></ul>
-              </div>
-              <div>
-                <strong>Slip Tiles</strong>
-                <div class="obstacle-row">
-                  <input type="number" id="slipRow" min="0" max="19" value="0" />
-                  <input type="number" id="slipCol" min="0" max="19" value="0" />
-                  <input type="number" id="slipProb" min="0" max="1" step="0.05" value="0.5" />
-                  <button type="button" id="addSlipBtn">Add Slip</button>
-                </div>
-                <ul id="slipList" class="obstacle-list"></ul>
-              </div>
-            </div>
-          </details>
           <div class="buttons">
             <button type="submit" id="startBtn" aria-disabled="true" disabled>Start Training</button>
             <button type="button" id="stopBtn">Stop</button>
