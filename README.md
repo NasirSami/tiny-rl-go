@@ -17,6 +17,10 @@ Goal: learn single-agent and multi-agent systems by building everything yourself
 - After each patch, the agent returns to Tutor Mode.
 
 ## Getting Started
+### Live Demo
+
+Explore the playground in your browser: https://tiny-rl-go-mo83.vercel.app
+
 1. **Install Go** and verify with:
    ```bash
    go version
